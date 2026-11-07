@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/MohammadMehdiSadeghi/work-buddy-rtl/releases"><img src="https://img.shields.io/badge/Release-v1.0.0-8b5cf6?style=for-the-badge&logo=github" alt="Release" /></a>
+  <a href="https://github.com/MohammadMehdiSadeghi/work-buddy-rtl/releases/tag/v1.0.0"><img src="https://img.shields.io/badge/Release-v1.0.0-8b5cf6?style=for-the-badge&logo=github" alt="Release" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-10b981?style=for-the-badge" alt="License" /></a>
   <a href="#quick-start"><img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-22d3ee?style=for-the-badge" alt="Platform" /></a>
   <a href="package.json"><img src="https://img.shields.io/badge/Node-22%2B-3c873a?style=for-the-badge&logo=node.js" alt="Node" /></a>
