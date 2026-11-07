@@ -1,0 +1,27 @@
+{
+  "name": "work-buddy-rtl",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Persian font and right-to-left layer for the WorkBuddy desktop app, injected at runtime",
+  "license": "MIT",
+  "author": "Mohammad Mehdi Sadeghi",
+  "homepage": "https://github.com/MohammadMehdiSadeghi/work-buddy-rtl",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MohammadMehdiSadeghi/work-buddy-rtl.git"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node tools/launch.mjs",
+    "status": "node tools/launch.mjs --status",
+    "verify": "node tools/verify.mjs",
+    "test": "node tests/direction.test.mjs",
+    "test:browser": "node tests/browser.test.mjs"
+  },
+  "devDependencies": {
+    "jsdom": "^24.1.3"
+  }
+}

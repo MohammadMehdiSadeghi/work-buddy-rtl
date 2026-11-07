@@ -1,0 +1,16 @@
+# local scratch space for experiments
+.scratch/
+
+# temporary asar rewrites
+*.wb-rtl.tmp
+
+# dependencies (only the tests need any)
+node_modules/
+
+# Freebuff Desktop project metadata
+.freebuff/
+
+# editor / OS noise
+.DS_Store
+Thumbs.db
+debug.log
