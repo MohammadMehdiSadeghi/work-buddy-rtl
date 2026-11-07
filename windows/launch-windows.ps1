@@ -1,5 +1,6 @@
 param(
   [switch]$Status,
+  [switch]$Check,
   [switch]$Restart,
   [switch]$Windowless
 )
@@ -49,17 +50,13 @@ if (-not $install) {
   exit 1
 }
 
-if ($Restart) {
-  $running = Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path -like "$install*" }
-  if ($running) {
-    Write-Host 'Closing the running instance...'
-    $running | Stop-Process -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 2
-  }
-}
-
+# The launcher does the process handling itself (it knows the exact executable
+# name and reports a clear message when another instance is open), so -Restart
+# is simply forwarded instead of killing by folder path here.
 $nodeArgs = @($Launcher, '--root', $install)
 if ($Status) { $nodeArgs += '--status' }
+if ($Check) { $nodeArgs += '--check' }
+if ($Restart) { $nodeArgs += '--restart' }
 if ($Windowless) { $nodeArgs += '--quiet' }
 
 & $node @nodeArgs

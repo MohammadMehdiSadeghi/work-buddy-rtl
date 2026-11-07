@@ -3,32 +3,48 @@
 //
 // Why not patch app.asar? WorkBuddy enables Electron's ASAR integrity
 // validation: changing app.asar makes the app refuse to start. This launcher
-// keeps the app untouched — it starts it with a local DevTools port, connects
-// over the Chrome DevTools Protocol and injects the stylesheet (fonts inlined)
-// plus the direction script into every renderer window.
+// keeps the app untouched — it starts it with a local DevTools port and injects
+// the stylesheet (fonts inlined) plus the direction script into every renderer
+// window, now and for every window opened later.
+//
+//   node tools/launch.mjs                 start the app with the layer
+//   node tools/launch.mjs --status        report state, never starts anything
+//   node tools/launch.mjs --check         verify the patch, exit 1 if broken
+//   node tools/launch.mjs --restart       close a running instance first
+//   node tools/launch.mjs --root <dir> --port <n> --quiet
+//   node tools/launch.mjs -- --user-data-dir=...   extra switches for the app
 
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { spawn, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { findInstalls } from './locate.mjs'
+import { readEntry } from './asar.mjs'
+import { checkPatch, cssSource, inject, isTarget, listTargets, loadPatch, waitForTargets } from './inject.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
-const REPO = path.resolve(HERE, '..')
-const PATCH = path.join(REPO, 'patch')
+const PATCH_DIR = path.resolve(HERE, '..', 'patch')
+const STATE_FILE = path.join(os.tmpdir(), 'workbuddy-rtl.json')
 
 const argv = process.argv.slice(2)
 const arg = (name) => {
   const i = argv.indexOf(name)
   return i >= 0 ? argv[i + 1] : undefined
 }
-const flag = (name) => argv.includes(name)
-const quiet = flag('--quiet')
-const status = flag('--status')
+const has = (name) => argv.includes(name)
+const quiet = has('--quiet') || has('-q')
+
+// Everything after `--` is handed to the app untouched.
+const split = argv.indexOf('--')
+const appArgs = split >= 0 ? argv.slice(split + 1) : []
 
 const log = (...args) => {
   if (!quiet) console.log(...args)
 }
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+// ---------------------------------------------------------------- install ---
 
 function findExe(dir) {
   let entries = []
@@ -37,120 +53,107 @@ function findExe(dir) {
   } catch {
     return null
   }
-  return (
-    entries
-      .filter((e) => e.isFile() && /\.exe$/i.test(e.name) && /workbuddy/i.test(e.name))
-      .map((e) => path.join(dir, e.name))
-      .sort((a, b) => fs.statSync(b).size - fs.statSync(a).size)[0] || null
-  )
+  const exes = entries
+    .filter((entry) => entry.isFile() && /\.exe$/i.test(entry.name) && /workbuddy/i.test(entry.name))
+    .map((entry) => path.join(dir, entry.name))
+  if (!exes.length) return null
+  return exes.sort((a, b) => fs.statSync(b).size - fs.statSync(a).size)[0]
 }
 
-function running() {
-  try {
-    if (process.platform === 'win32') {
-      const out = spawnSync('tasklist', ['/FI', 'IMAGENAME eq WorkBuddyAI.exe', '/NH'], { encoding: 'utf8' })
-      return /WorkBuddyAI\.exe/i.test(out.stdout || '')
+function processes() {
+  if (process.platform === 'win32') {
+    const out = spawnSync('tasklist', ['/FO', 'CSV', '/NH'], { encoding: 'utf8', windowsHide: true })
+    const list = []
+    for (const line of (out.stdout || '').split(/\r?\n/)) {
+      const match = line.match(/^"([^"]+)","(\d+)"/)
+      if (match) list.push({ name: match[1], pid: Number(match[2]) })
     }
-    const out = spawnSync('ps', ['-A'], { encoding: 'utf8' })
-    return /workbuddy/i.test(out.stdout || '')
-  } catch {
-    return false
+    return list
   }
+  const out = spawnSync('ps', ['-Ao', 'pid=,comm='], { encoding: 'utf8' })
+  return (out.stdout || '')
+    .split('\n')
+    .map((line) => line.trim().split(/\s+/))
+    .filter((parts) => parts.length >= 2 && /^\d+$/.test(parts[0]))
+    .map((parts) => ({ pid: Number(parts[0]), name: parts.slice(1).join(' ') }))
 }
 
-function loadPatch() {
-  const cssFile = path.join(PATCH, 'workbuddy-rtl.css')
-  const jsFile = path.join(PATCH, 'workbuddy-rtl.js')
-  for (const file of [cssFile, jsFile]) {
-    if (!fs.existsSync(file)) throw new Error(`patch file missing: ${file}`)
-  }
-  const css = fs.readFileSync(cssFile, 'utf8').replace(/\.\/fonts\/([A-Za-z0-9._-]+\.woff2)/g, (_, name) => {
-    const file = path.join(PATCH, 'fonts', name)
-    return `data:font/woff2;base64,${fs.readFileSync(file).toString('base64')}`
-  })
-  return { css, js: fs.readFileSync(jsFile, 'utf8') }
-}
+const pidsOf = (exeName) =>
+  processes()
+    .filter((proc) => path.basename(proc.name).toLowerCase() === exeName.toLowerCase())
+    .map((proc) => proc.pid)
 
-function bootstrapSource(css, js) {
-  return `(() => {
-  try {
-    const CSS = ${JSON.stringify(css)}
-    const JS = ${JSON.stringify(js)}
-    const apply = () => {
+function terminate(pids) {
+  for (const pid of pids) {
+    if (process.platform === 'win32') {
+      spawnSync('taskkill', ['/PID', String(pid), '/F', '/T'], { stdio: 'ignore', windowsHide: true })
+    } else {
       try {
-        let style = document.getElementById('workbuddy-rtl-style')
-        if (!style) {
-          style = document.createElement('style')
-          style.id = 'workbuddy-rtl-style'
-          ;(document.head || document.documentElement).appendChild(style)
-        }
-        if (style.textContent !== CSS) style.textContent = CSS
-      if (!window.__workbuddyRtl) (0, eval)(JS)
+        process.kill(pid, 'SIGTERM')
       } catch {}
     }
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', apply, { once: true })
-    }
-    apply()
-  } catch {}
-})()`
+  }
 }
 
-async function listTargets(port) {
+async function waitGone(exeName, timeout) {
+  const deadline = Date.now() + timeout
+  while (Date.now() < deadline) {
+    if (!pidsOf(exeName).length) return true
+    await delay(250)
+  }
+  return !pidsOf(exeName).length
+}
+
+// ------------------------------------------------------------------ state ---
+
+function readState() {
   try {
-    const res = await fetch(`http://127.0.0.1:${port}/json/list`, { signal: AbortSignal.timeout(1000) })
-    if (!res.ok) return []
-    return await res.json()
+    return JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'))
   } catch {
-    return []
+    return null
   }
 }
 
-// Don't turn an already-running WorkBuddy into a broken injector: CDP is only
-// reachable from a port the launcher spawns itself, and WorkBuddy's
-// single-instance behavior would make every extra copy behave oddly.
-async function inject(target, source) {
-  const socket = new WebSocket(target.webSocketDebuggerUrl)
+function writeState(state) {
   try {
-    await new Promise((resolve, reject) => {
-      socket.onopen = resolve
-      socket.onerror = reject
-    })
+    fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2))
+  } catch {}
+}
 
-    let seq = 0
-    const pending = new Map()
-    socket.onmessage = (event) => {
-      const message = JSON.parse(event.data)
-      if (message.id && pending.has(message.id)) {
-        pending.get(message.id)(message)
-        pending.delete(message.id)
-      }
-    }
-    const send = (method, params = {}) =>
-      new Promise((resolve) => {
-        const id = ++seq
-        pending.set(id, resolve)
-        socket.send(JSON.stringify({ id, method, params }))
-      })
+function clearState() {
+  try {
+    fs.unlinkSync(STATE_FILE)
+  } catch {}
+}
 
-    await send('Page.enable')
-    await send('Page.addScriptToEvaluateOnNewDocument', { source })
-    await send('Runtime.evaluate', { expression: source, awaitPromise: false })
-  } catch (err) {
-    try {
-      socket.close()
-    } catch {}
-    throw err
-  }
+// ------------------------------------------------------------------- main ---
+
+function describe(install, exe, pids, patch) {
+  const state = readState()
+  const live = state && pids.includes(state.pid)
+  console.log(`Install    : ${install.dir}${install.version ? `  (v${install.version})` : ''}`)
+  console.log(`Executable : ${exe}`)
+  console.log(`Running    : ${pids.length ? `yes  (pid ${pids.join(', ')})` : 'no'}`)
+  console.log(`Launcher   : ${live ? `active  (pid ${state.pid}, CDP port ${state.port})` : 'not active'}`)
+  console.log(`Patch      : ${patch.ok ? 'ok' : `incomplete — ${patch.problems.join('; ')}`}`)
 }
 
 async function main() {
   const rootArg = arg('--root')
-  const install = rootArg ? { dir: path.resolve(rootArg) } : findInstalls()[0]
+  let install = rootArg ? { dir: path.resolve(rootArg), version: '' } : findInstalls()[0]
 
   if (!install) {
     console.error('WorkBuddy not found. Pass --root "<install folder>".')
     process.exit(1)
+  }
+
+  if (!install.version) {
+    for (const candidate of [path.join(install.dir, 'resources', 'app.asar'), path.join(install.dir, 'app.asar')]) {
+      try {
+        install = { ...install, version: JSON.parse(readEntry(candidate, 'package.json').toString('utf8')).version || '' }
+        break
+      } catch {}
+    }
   }
 
   const exe = findExe(install.dir)
@@ -159,86 +162,128 @@ async function main() {
     process.exit(1)
   }
 
-  // Don't turn an already-running app into a broken injector: CDP is only
-  // reachable from a port that the launcher spawns itself, and WorkBuddy's
-  // single-instance behaviour would make every extra copy behave oddly.
-  if (running()) {
-    console.log(`Install    : ${install.dir}`)
-    console.log(`Executable : ${exe}`)
-    console.log(`Running    : ${running() ? 'yes' : 'no'}`)
-    console.log('RTL layer  : injected by tools/launch.mjs at startup')
+  const exeName = path.basename(exe)
+  const patch = checkPatch(PATCH_DIR)
+
+  if (has('--check')) {
+    describe(install, exe, pidsOf(exeName), patch)
+    process.exit(patch.ok ? 0 : 1)
+  }
+
+  if (has('--status')) {
+    describe(install, exe, pidsOf(exeName), patch)
     return
   }
 
-  const { css, js } = loadPatch()
-  const source = bootstrapSource(css, js)
+  if (!patch.ok) {
+    console.error(`patch is incomplete: ${patch.problems.join('; ')}`)
+    process.exit(1)
+  }
+
+  const pids = pidsOf(exeName)
+  if (pids.length && !has('--restart')) {
+    console.log(`WorkBuddy is already running (pid ${pids.join(', ')}).`)
+    console.log('The RTL layer is only injected when the app is started by this launcher.')
+    console.log('Close WorkBuddy and run this again, or run it with --restart.')
+    return
+  }
+
+  if (pids.length) {
+    log('closing the running instance...')
+    terminate(pids)
+    if (!(await waitGone(exeName, 10000))) {
+      console.error('could not close the running WorkBuddy instance')
+      process.exit(1)
+    }
+  }
+
+  const { css, js } = loadPatch(PATCH_DIR)
+  const sources = { css: cssSource(css), js }
   const port = Number(arg('--port')) || 19000 + Math.floor(Math.random() * 20000)
 
-  log(`starting ${path.basename(exe)} (CDP port ${port})`)
-  const child = spawn(exe, [`--remote-debugging-port=${port}`, '--remote-debugging-address=127.0.0.1'], {
+  log(`starting ${exeName} (CDP port ${port})`)
+  const child = spawn(exe, [`--remote-debugging-port=${port}`, '--remote-debugging-address=127.0.0.1', ...appArgs], {
     cwd: install.dir,
     stdio: 'ignore',
+    windowsHide: true,
   })
+
+  if (!child.pid) {
+    console.error('could not start WorkBuddy')
+    process.exit(1)
+  }
 
   let exited = false
   child.on('exit', () => {
     exited = true
   })
+  writeState({ pid: child.pid, port, startedAt: new Date().toISOString(), dir: install.dir })
 
-  const deadline = Date.now() + 120000
-  let targets = []
-  while (Date.now() < deadline) {
-    if (exited) {
-      console.error('WorkBuddy exited before its window was ready (another instance may be open).')
-      process.exit(1)
-    }
-    targets = (await listTargets(port)).filter((t) => t.type === 'page' && /renderer\/index\.html/.test(t.url))
-    if (targets.length) break
-    await new Promise((r) => setTimeout(r, 500))
+  const { targets, dead } = await waitForTargets(port, { timeout: 120000, isDead: () => exited })
+  if (dead) {
+    clearState()
+    console.error('WorkBuddy exited before its window was ready (another instance may be open).')
+    process.exit(1)
   }
-
   if (!targets.length) {
-    console.error('Timed out waiting for the WorkBuddy window.')
-    child.kill()
+    clearState()
+    try {
+      child.kill()
+    } catch {}
+    console.error('timed out waiting for the WorkBuddy window')
     process.exit(1)
   }
 
-const injected = new Map()
+  const sockets = new Map()
   for (const target of targets) {
     try {
-      injected.set(target.id, await inject(target, source))
+      sockets.set(target.id, await inject(target, sources))
       log(`injected: ${target.title || target.url}`)
     } catch (err) {
       console.error(`could not inject into ${target.url}: ${err.message}`)
     }
   }
-}
 
-function loopNewWindows() {
-  if (exited) return
+  log('RTL layer active. Leave this process running; it stops with WorkBuddy.')
+
+  // Settings, conversations and every new window get their own renderer.
   const timer = setInterval(async () => {
-    const pages = (await listTargets(port)).filter((t) => t.type === 'page' && /renderer\/index\.html/.test(t.url))
-    for (const target of pages) {
-      if (injected.has(target.id)) continue
+    if (exited) return
+    for (const target of (await listTargets(port)).filter(isTarget)) {
+      if (sockets.has(target.id)) continue
       try {
-        injected.set(target.id, await inject(target, source))
+        sockets.set(target.id, await inject(target, sources))
         log(`injected: ${target.title || target.url}`)
       } catch {}
     }
-  }, 2000)
+  }, 1500)
 
-  child.on('exit', () => {
+  const cleanup = () => {
     clearInterval(timer)
-    for (const socket of injected.values()) {
+    for (const socket of sockets.values()) {
       try {
         socket.close()
       } catch {}
     }
+    sockets.clear()
+    clearState()
+  }
+
+  child.on('exit', () => {
+    cleanup()
     process.exit(0)
   })
+
+  for (const signal of ['SIGINT', 'SIGTERM']) {
+    process.on(signal, () => {
+      cleanup()
+      process.exit(0)
+    })
+  }
 }
 
 main().catch((err) => {
+  clearState()
   console.error(err.message || err)
   process.exit(1)
 })
