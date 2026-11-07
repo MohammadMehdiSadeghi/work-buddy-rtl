@@ -133,7 +133,7 @@
 }
 
 /* Tables read right-to-left, but their numbers stay tabular. */
-[dir="rtl"] :where(.cb-markdown, .markdown-preview__body) :where(td, th) {
+[dir="rtl"] :is(.cb-markdown, .markdown-preview__body) :is(td, th) {
   text-align: right;
 }
 
@@ -184,6 +184,8 @@
   unicode-bidi: plaintext;
 }
 
-[dir="rtl"]:where([contenteditable="true"], textarea) {
+[dir="rtl"][contenteditable="true"],
+[dir="rtl"][contenteditable=""],
+textarea[dir="rtl"] {
   text-align: right;
 }
