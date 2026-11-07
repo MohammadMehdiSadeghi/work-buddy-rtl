@@ -184,6 +184,10 @@ Or through the PowerShell wrapper:
 - **Layout, sizes and spacing** — the layer does not change any dimension.
 - **Colours and theme** — no background, border or text colour is set, so the
   light and the dark theme both look correct.
+- **The text itself** — no character, space or invisible control mark is added,
+  removed or reordered. The layer only sets a `dir` attribute, so copying a
+  message gives exactly what was written (checked by
+  `tests/text-integrity.test.mjs`).
 - **The app's interface language** — the layer does not translate strings; it
   makes the interface *render* Persian correctly.
 
@@ -214,6 +218,7 @@ Or through the PowerShell wrapper:
 | `tests/direction.test.mjs` | the direction script against a jsdom fixture |
 | `tests/browser.test.mjs` | the full CDP path in headless Chrome/Edge |
 | `tests/app-css.test.mjs` | the patch on top of the app's own stylesheets |
+| `tests/text-integrity.test.mjs` | the message text is byte-identical before and after injection |
 | `tests/browser-path.mjs` | finds a Chrome/Edge binary for the two browser tests |
 | `windows/launch-windows.ps1` | PowerShell wrapper (`-Status`, `-Check`, `-Restart`) |
 | `windows/install-shortcut.ps1` | desktop / Start-menu shortcut |
@@ -228,6 +233,7 @@ npm install                      # only for the tests below (jsdom)
 node tests/direction.test.mjs    # direction behaviour in a DOM
 node tests/browser.test.mjs      # end-to-end injection in headless Chrome/Edge
 node tests/app-css.test.mjs      # the same, on top of the app's own stylesheets
+node tests/text-integrity.test.mjs  # proves no character of a message is touched
 ```
 
 `tests/browser.test.mjs` uses the same `tools/inject.mjs` calls as the
@@ -376,6 +382,9 @@ node tools/launch.mjs      # اجرای WorkBuddy همراه با لایه
 - **فونت کد، آیکون‌ها و ترمینال** — دست‌نخورده و چپ‌به‌راست.
 - **چیدمان، اندازه‌ها و فاصله‌ها** — هیچ اندازه‌ای تغییر نمی‌کند.
 - **رنگ‌ها و تم** — هیچ رنگ پس‌زمینه، حاشیه یا متنی تعیین نمی‌شود.
+- **خودِ متن** — هیچ حرف، فاصله یا کاراکتر کنترلیِ نامرئی اضافه، حذف یا جابه‌جا
+  نمی‌شود. لایه فقط یک اتریبیوت `dir` می‌گذارد؛ پس کپی‌کردن پیام دقیقاً همان
+  چیزی است که نوشته شده (با `tests/text-integrity.test.mjs` بررسی می‌شود).
 - **زبان رابط کاربری** — لایه رشته‌ها را ترجمه نمی‌کند؛ فقط نمایش فارسی را
   درست می‌کند.
 

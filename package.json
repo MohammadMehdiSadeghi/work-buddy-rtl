@@ -21,7 +21,8 @@
     "test": "node tests/direction.test.mjs",
     "test:browser": "node tests/browser.test.mjs",
     "test:app": "node tests/app-css.test.mjs",
-    "test:all": "node tests/direction.test.mjs && node tests/browser.test.mjs && node tests/app-css.test.mjs"
+    "test:text": "node tests/text-integrity.test.mjs",
+    "test:all": "node tests/direction.test.mjs && node tests/browser.test.mjs && node tests/app-css.test.mjs && node tests/text-integrity.test.mjs"
   },
   "devDependencies": {
     "jsdom": "^24.1.3"

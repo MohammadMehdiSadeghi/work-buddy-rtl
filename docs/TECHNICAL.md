@@ -148,6 +148,7 @@ theme tokens, so light and dark themes both look correct.
 | `node tests/direction.test.mjs` | the direction script against a jsdom fixture (needs `npm install`) |
 | `node tests/browser.test.mjs` | the whole CDP path in headless Chrome/Edge: stylesheet applied, font resolved, reload re-applied |
 | `node tests/app-css.test.mjs` | the same, but on top of every `.css` inside the installed `app.asar` — proves the patch wins against the app's real specificity |
+| `node tests/text-integrity.test.mjs` | snapshots a message before and after injection: text, innerText and HTML must be identical apart from the added `dir` attribute |
 
 `tests/browser.test.mjs` and `tests/app-css.test.mjs` use the same
 `tools/inject.mjs` calls the launcher makes, so a green run means the injection
