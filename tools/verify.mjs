@@ -96,12 +96,22 @@ check('font file is a woff2', () => {
 // -------------------------------------------------------------------- tools ---
 
 check('tools compile', () => {
-  const files = ['launch.mjs', 'inject.mjs', 'locate.mjs', 'asar.mjs', 'verify.mjs'].map((name) => path.join(HERE, name))
+  const files = ['launch.mjs', 'inject.mjs', 'decide.mjs', 'locate.mjs', 'asar.mjs', 'verify.mjs'].map((name) =>
+    path.join(HERE, name)
+  )
   for (const file of files) {
     const out = spawnSync(process.execPath, ['--check', file], { encoding: 'utf8' })
     assert(out.status === 0, `${path.basename(file)}: ${(out.stderr || '').split('\n')[0]}`)
   }
   return `${files.length} files`
+})
+
+check('the shortcut asks for a patched window', () => {
+  const shortcut = fs.readFileSync(path.join(HERE, '..', 'windows', 'install-shortcut.ps1'), 'utf8')
+  assert(/-Ensure/.test(shortcut), 'the shortcut does not pass -Ensure, so clicking it can leave an unpatched app')
+  const wrapper = fs.readFileSync(path.join(HERE, '..', 'windows', 'launch-windows.ps1'), 'utf8')
+  assert(/\$Ensure/.test(wrapper), 'the PowerShell wrapper drops -Ensure')
+  return 'shortcut passes -Ensure'
 })
 
 check('launcher has no dead watcher', () => {

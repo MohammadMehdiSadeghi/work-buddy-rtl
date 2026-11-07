@@ -23,6 +23,7 @@ import { spawn, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { findInstalls } from './locate.mjs'
 import { readEntry } from './asar.mjs'
+import { decide } from './decide.mjs'
 import {
   checkPatch,
   cssSource,
@@ -225,22 +226,20 @@ async function main() {
   }
 
   const pids = pidsOf(exeName)
-  const running = readState()
-  const liveLauncher = running && pids.includes(running.pid) && running.dir === install.dir
+  const state = readState()
 
-  if (pids.length && !has('--restart')) {
-    if (ensure && liveLauncher) {
-      log(`already running with the layer (pid ${running.pid}, build ${running.patch || '?'})`)
+  switch (decide({ pids, state, installDir: install.dir, ensure, restart: has('--restart') })) {
+    case 'noop':
+      log(`already running with the layer (pid ${state.pid}, build ${state.patch || '?'})`)
       return
-    }
-    if (!ensure) {
+    case 'refuse':
       console.log(`WorkBuddy is already running (pid ${pids.join(', ')}).`)
       console.log('The RTL layer is only injected when the app is started by this launcher.')
       console.log('Close WorkBuddy and run this again, or run it with --restart.')
       return
-    }
-    // --ensure: the running copy has no layer, so replacing it is the point.
-    log('WorkBuddy is running without the layer; replacing that instance...')
+    case 'replace':
+      log('WorkBuddy is running without the layer; replacing that instance...')
+      break
   }
 
   if (pids.length) {
