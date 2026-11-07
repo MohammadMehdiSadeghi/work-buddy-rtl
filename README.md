@@ -95,8 +95,11 @@ process has to be restarted to pick up a new version.
   works offline), all weights, only for the Arabic/Persian codepoints.
 - ↔️ **Automatic direction** — a Persian prompt types right-to-left, an English
   one stays left-to-right, no toggle to remember.
-- 🧠 **Per-paragraph bidi** — `unicode-bidi: plaintext` keeps mixed
-  English/Persian sentences in the right order.
+- 🧠 **One direction per message** — the direction of a message comes from the
+  majority of its letters, so a Persian answer full of English terms stays
+  right-to-left on every line instead of flipping half a line to the left.
+- 🔤 **English stays readable** — Latin words, paths and code inside Persian
+  prose keep their own left-to-right order; nothing is mirrored or reordered.
 - 💻 **Code is never flipped** — code blocks, inline code, terminals, diffs and
   the editor stay left-to-right.
 - 🎨 **Theme-safe** — the layer sets font, direction and alignment only; it
@@ -300,8 +303,11 @@ archive` بسته شود. جزئیات کامل در [`docs/TECHNICAL.md`](docs/
   آفلاین)، همه وزن‌ها، فقط برای بازه عربی/فارسی.
 - ↔️ **جهت خودکار**: پرامپت فارسی راست‌به‌چپ تایپ می‌شود و پرامپت انگلیسی
   چپ‌به‌راست؛ هیچ کلیدی برای جابه‌جایی لازم نیست.
-- 🧠 **جهت‌دهی پاراگراف‌به‌پاراگراف**: با `unicode-bidi: plaintext` جمله‌های
-  ترکیبی فارسی/انگلیسی درست خوانده می‌شوند.
+- 🧠 **یک جهت برای هر پیام**: جهت هر پیام از اکثریت حروفش تعیین می‌شود؛ پس یک
+  پاسخ فارسی پر از اصطلاح انگلیسی، خط‌به‌خط راست‌به‌چپ می‌ماند و نیم‌خط به سمت
+  چپ نمی‌پرد.
+- 🔤 **انگلیسی خوانا می‌ماند**: کلمه، مسیر و کدِ لاتین داخل متن فارسی، ترتیب
+  چپ‌به‌راست خودش را حفظ می‌کند و هیچ‌چیز برعکس نمی‌شود.
 - 💻 **کد هرگز برنمی‌گردد**: بلوک کد، کد درون‌خطی، ترمینال، دیف و ویرایشگر
   چپ‌به‌راست می‌مانند.
 - 🎨 **سازگار با هر تم**: لایه فقط فونت، جهت و تراز را تعیین می‌کند و هیچ

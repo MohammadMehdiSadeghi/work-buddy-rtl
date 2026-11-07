@@ -171,19 +171,15 @@
   text-align: right;
 }
 
-/* Markdown decides its base direction per paragraph, so an English sentence
-   inside Persian prose neither jumps nor flips its punctuation. */
-:where(.cb-markdown, .markdown-preview__body)
-  :where(p, li, h1, h2, h3, h4, h5, h6, blockquote, dt, dd, td, th) {
-  unicode-bidi: plaintext;
-}
+/* Do NOT use `unicode-bidi: plaintext` here. It decides the base direction per
+   bidi paragraph, and every <br> or hard line break starts a new one — so a
+   Persian paragraph whose second line begins with a Latin word flipped that
+   line to the left edge ("half a line jumps left"). The direction comes from
+   the `dir` attribute on the container instead, and embedded English runs stay
+   readable because the bidi algorithm keeps them left-to-right on their own. */
 
 /* The composer is a contenteditable (or a textarea) and keeps the app's own
    placeholder when empty; the script decides its direction from the text. */
-:where([contenteditable="true"], textarea) {
-  unicode-bidi: plaintext;
-}
-
 [dir="rtl"][contenteditable="true"],
 [dir="rtl"][contenteditable=""],
 textarea[dir="rtl"] {

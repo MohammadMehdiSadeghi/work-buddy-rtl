@@ -98,20 +98,32 @@ Families shadowed: `PingFang SC` (first in almost every app stack), `Segoe UI`,
 - computes the composer's direction (`textarea`, `[contenteditable]`) from the
   **first strong character** on input, composition, focus and click; empty
   input clears the attribute so the app's placeholder keeps its own direction,
-- walks text nodes once with a `TreeWalker` and sets `dir="rtl"` on the parent
-  of any text that starts with a strong RTL character. A `TreeWalker` is much
-  cheaper than `querySelectorAll` over twenty tag names, and it reaches text
-  inside components the patch knows nothing about,
-- skips code, terminals, editors and the composer (`.cb-markdown-pre`,
-  `.cr-code-block`, `.xterm`, `.monaco-editor`, `.cm-editor`, `pre`, `code`),
+- gives a whole prose container (`.cb-markdown`, `[class*="markdown"]`,
+  `.markdown-preview__body`) **one** direction, decided by the majority of its
+  letters — a third of Persian letters is enough to call a block Persian. The
+  direction is written on the container, and every paragraph, list and table
+  inside it inherits,
+- marks short app labels (sidebar items, buttons, settings rows) individually,
+  from their first strong character,
+- walks text nodes with a `TreeWalker` and skips anything inside a prose
+  container (the container already decided), code, terminals, editors and the
+  composer,
 - only ever manages its own `dir` attributes (`data-wb-rtl="1"`); a direction
   the app set itself is never touched,
 - coalesces work with a 120 ms timer behind a `MutationObserver` on `<body>`,
 - clears the attribute in a separate, rarer pass, so an element that was
   Persian and became English does not keep a stale direction.
 
-Two details that caused real bugs and are worth keeping in mind:
+Three details that caused real bugs and are worth keeping in mind:
 
+- **`unicode-bidi: plaintext` is a trap here.** It decides the base direction
+  per *bidi paragraph*, and every `<br>` starts a new one. A Persian paragraph
+  whose second line began with `line-height` or `(text-editor` flipped that
+  line to the left edge — the "half a line jumps left" report. It is gone; the
+  direction now comes from the container's `dir` attribute, and embedded
+  English runs stay left-to-right on their own through the bidi algorithm.
+  `tests/app-css.test.mjs` measures the left offset of every line of such a
+  paragraph and fails if any of them reaches the left margin.
 - **`.value` is not text.** A `<button>`, `<li>` or `<option>` exposes an empty
   `.value`; reading it instead of `textContent` made every Persian sidebar
   label look empty. Only `textarea` and `input` use `.value`.
@@ -121,9 +133,9 @@ Two details that caused real bugs and are worth keeping in mind:
   with the same specificity as a `.class p` rule, so it wins by being injected
   last and nothing else moves.
 
-The stylesheet also gives markdown paragraphs `unicode-bidi: plaintext` so
-mixed English/Persian sentences read in the right order, and forces
-`direction: ltr` on code, terminal and editor islands.
+The stylesheet forces `direction: ltr` and `unicode-bidi: isolate` on code,
+terminal and editor islands, so a snippet inside a Persian answer is never
+reordered and never leaks its direction into the surrounding sentence.
 
 No colour is ever set: every surface, border and background keeps the app's
 theme tokens, so light and dark themes both look correct.

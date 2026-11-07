@@ -1,10 +1,12 @@
 /* ==========================================================================
    WorkBuddy RTL — automatic direction detection
-   - composer (contenteditable / textarea): direction from the first strong
-     character, so a Persian prompt types right-to-left and an English one
-     stays left-to-right.
-   - text that starts with a Persian character gets dir="rtl", which the
-     stylesheet turns into right alignment.
+   - a whole markdown block (one chat message) takes one direction, decided by
+     the majority of its letters, so a Persian message stays right-to-left even
+     when a paragraph inside it starts with a Latin word.
+   - the composer (contenteditable / textarea) takes its direction from the
+     first strong character, so a Persian prompt types right-to-left and an
+     English one stays left-to-right.
+   - short app labels (sidebar, buttons, settings) are marked individually.
    Only the `dir` attribute is written, and only on elements this script owns
    (`data-wb-rtl="1"`); a direction set by the app itself is never touched.
    ========================================================================== */
@@ -25,6 +27,11 @@
     // Never inside code, an editor or the composer itself.
     const SKIP = `${CODE}, ${EDITABLE}`
 
+    // A prose container: everything inside it shares one direction.
+    const SCOPE = '.cb-markdown, [class*="markdown"], .markdown-preview__body'
+
+    const rtlCache = new WeakMap()
+
     function dirOf(text) {
       const sample = text.length > 300 ? text.slice(0, 300) : text
       for (const ch of sample) {
@@ -32,6 +39,24 @@
         if (LTR_CHAR.test(ch)) return 'ltr'
       }
       return null
+    }
+
+    // Majority of letters, not the first one: a Persian message with English
+    // terms in it is still Persian. `plaintext` used to do this per line, which
+    // made any line starting with a Latin word jump to the left edge.
+    function dirOfBlock(text) {
+      let rtl = 0
+      let ltr = 0
+      const sample = text.length > 4000 ? text.slice(0, 4000) : text
+      for (const ch of sample) {
+        if (RTL_CHAR.test(ch)) rtl++
+        else if (LTR_CHAR.test(ch)) ltr++
+      }
+      if (!rtl && !ltr) return null
+      if (!ltr) return 'rtl'
+      if (!rtl) return 'ltr'
+      // A third of the letters is enough to call a block Persian.
+      return rtl * 2 >= ltr ? 'rtl' : 'ltr'
     }
 
     function textOf(el) {
@@ -66,6 +91,25 @@
       }
     }
 
+    function blockDir(scope) {
+      const text = scope.textContent || ''
+      const head = text.slice(0, 64)
+      const cached = rtlCache.get(scope)
+      if (cached && cached.head === head && cached.length === text.length) return cached.dir
+      const dir = dirOfBlock(text)
+      rtlCache.set(scope, { head, length: text.length, dir })
+      return dir
+    }
+
+    function markScopes() {
+      for (const scope of document.querySelectorAll(SCOPE)) {
+        if (scope.closest(SKIP)) continue
+        // Only ever add rtl: an English block keeps the app's own default, so
+        // the attribute does not flip back and forth on every pass.
+        applyDir(scope, blockDir(scope) === 'rtl' ? 'rtl' : null)
+      }
+    }
+
     // One pass over the text nodes: much cheaper than querying every tag name,
     // and it reaches text inside components this script knows nothing about.
     function markText(root) {
@@ -75,6 +119,8 @@
           const parent = node.parentElement
           if (!parent) return NodeFilter.FILTER_REJECT
           if (parent.closest(SKIP)) return NodeFilter.FILTER_REJECT
+          // Inside a prose container the direction comes from the container.
+          if (parent.closest(SCOPE)) return NodeFilter.FILTER_REJECT
           return NodeFilter.FILTER_ACCEPT
         },
       })
@@ -94,7 +140,8 @@
           applyDir(el, null)
           continue
         }
-        if (dirOf(textOf(el)) !== 'rtl') applyDir(el, null)
+        const wanted = el.matches(SCOPE) ? blockDir(el) : dirOf(textOf(el)) === 'rtl' ? 'rtl' : null
+        if (wanted !== 'rtl') applyDir(el, null)
       }
     }
 
@@ -102,6 +149,7 @@
       const scope = root && root.nodeType === 1 ? root : document.body
       if (!scope) return
       markComposers(document)
+      markScopes()
       markText(scope)
       if (scope === document.body) clearStale()
     }

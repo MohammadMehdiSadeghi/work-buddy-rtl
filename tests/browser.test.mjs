@@ -85,10 +85,14 @@ const results = []
 const expect = (name, actual, wanted) => results.push({ name, actual, wanted, ok: actual === wanted })
 
 expect('stylesheet is in the document', await evaluate(`!!document.getElementById('workbuddy-rtl-style')`), true)
-expect('persian paragraph dir', await evaluate(`document.getElementById('fa').getAttribute('dir')`), 'rtl')
+expect('persian block direction', await evaluate(`document.querySelector('.cb-markdown').getAttribute('dir')`), 'rtl')
 expect('persian paragraph alignment', await evaluate(`getComputedStyle(document.getElementById('fa')).textAlign`), 'right')
 expect('english paragraph dir', await evaluate(`document.getElementById('en').getAttribute('dir')`), null)
-expect('persian list item', await evaluate(`document.getElementById('li1').getAttribute('dir')`), 'rtl')
+expect(
+  'persian list item inherits',
+  await evaluate(`getComputedStyle(document.getElementById('li1')).direction`),
+  'rtl'
+)
 expect('english list item', await evaluate(`document.getElementById('li2').getAttribute('dir')`), null)
 expect('code stays ltr', await evaluate(`getComputedStyle(document.getElementById('code')).direction`), 'ltr')
 expect('sidebar label', await evaluate(`document.getElementById('side').getAttribute('dir')`), 'rtl')
@@ -129,7 +133,7 @@ const reloaded = (await listTargets(PORT)).filter(isTarget)[0]
 if (reloaded) {
   const after = await connectTarget(reloaded)
   const message = await after.send('Runtime.evaluate', {
-    expression: `!!document.getElementById('workbuddy-rtl-style') && document.getElementById('fa').getAttribute('dir')`,
+    expression: `!!document.getElementById('workbuddy-rtl-style') && document.querySelector('.cb-markdown').getAttribute('dir')`,
     returnByValue: true,
   })
   expect('reload re-applies the layer', message.result?.result?.value, 'rtl')

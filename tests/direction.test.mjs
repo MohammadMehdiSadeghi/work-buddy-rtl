@@ -14,19 +14,24 @@ try {
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const source = fs.readFileSync(path.join(HERE, '..', 'patch', 'workbuddy-rtl.js'), 'utf8')
 
-// The markup mirrors the parts of WorkBuddy's DOM the layer touches: the
-// sidebar, a markdown bubble with Persian and English text, a code block and
+// The markup mirrors the parts of WorkBuddy's DOM the layer touches: a sidebar
+// label, three markdown messages (Persian, English, mixed), a code block and
 // the composer.
 const html = `<!doctype html><html><body>
   <aside class="sk-sidebar"><button class="sk-sidebar-chat">گفتگوی جدید</button></aside>
   <main>
     <div class="cb-chat-message--assistant">
-      <div class="cb-chat-message-bubble cb-markdown">
+      <div class="cb-chat-message-bubble cb-markdown" id="fa-block">
         <p id="fa">سلام، این یک پیام فارسی است.</p>
-        <p id="en">This is an English message.</p>
         <p id="appdir" dir="ltr">سلام با dir از خود اپ</p>
-        <ul id="list"><li>آیتم اول</li><li>Second item</li></ul>
+        <ul><li id="li1">آیتم اول</li></ul>
         <div class="cb-markdown-pre"><pre><code id="code">سلام()</code></pre></div>
+      </div>
+      <div class="cb-chat-message-bubble cb-markdown" id="en-block">
+        <p id="en">This is an English message.</p>
+      </div>
+      <div class="cb-chat-message-bubble cb-markdown" id="mixed-block">
+        <p id="mixed">ممنون، الگو ساده است:<br>line-height 1.35 و (text-editor، 16px) ادامه دارد<br>خط سوم هم فارسی است.</p>
       </div>
     </div>
     <textarea id="composer"></textarea>
@@ -43,14 +48,14 @@ await wait()
 
 const results = []
 const expect = (name, actual, wanted) => results.push({ name, actual, wanted, ok: actual === wanted })
-const dir = (id) => window.document.getElementById(id).getAttribute('dir')
+const attr = (id, name) => window.document.getElementById(id).getAttribute(name)
 
-expect('persian paragraph', dir('fa'), 'rtl')
-expect('english paragraph', dir('en'), null)
-expect('app-owned dir is kept', dir('appdir'), 'ltr')
-expect('persian list item', window.document.querySelector('#list li').getAttribute('dir'), 'rtl')
-expect('english list item', window.document.querySelectorAll('#list li')[1].getAttribute('dir'), null)
-expect('code block untouched', dir('code'), null)
+expect('persian block direction', attr('fa-block', 'dir'), 'rtl')
+expect('persian paragraph inherits, no own dir', attr('fa', 'dir'), null)
+expect('english block stays untouched', attr('en-block', 'dir'), null)
+expect('mixed block is still persian', attr('mixed-block', 'dir'), 'rtl')
+expect('app-owned dir is kept', attr('appdir', 'dir'), 'ltr')
+expect('code block untouched', attr('code', 'dir'), null)
 expect('sidebar button', window.document.querySelector('.sk-sidebar-chat').getAttribute('dir'), 'rtl')
 
 const composer = window.document.getElementById('composer')
@@ -74,17 +79,26 @@ editable.textContent = 'متن فارسی'
 await wait()
 expect('contenteditable', editable.getAttribute('dir'), 'rtl')
 
-const fa = window.document.getElementById('fa')
-fa.textContent = 'Now in English.'
+// An English message that becomes Persian, and a Persian one that becomes
+// English: the block follows its content.
+const enBlock = window.document.getElementById('en-block')
+window.document.getElementById('en').textContent = 'این حالا فارسی است.'
 await wait()
-expect('direction is dropped when the text turns english', fa.getAttribute('dir'), null)
+expect('english block turns persian', enBlock.getAttribute('dir'), 'rtl')
 
-const fresh = window.document.createElement('p')
-fresh.id = 'fresh'
-fresh.textContent = 'پیام تازه'
-window.document.querySelector('.cb-markdown').appendChild(fresh)
+const faBlock = window.document.getElementById('fa-block')
+for (const p of faBlock.querySelectorAll('p, li')) p.textContent = 'Now English.'
 await wait()
-expect('message rendered later', dir('fresh'), 'rtl')
+expect('persian block turns english', faBlock.getAttribute('dir'), null)
+
+// A message rendered after load gets its own direction.
+const fresh = window.document.createElement('div')
+fresh.className = 'cb-chat-message-bubble cb-markdown'
+fresh.id = 'fresh-block'
+fresh.innerHTML = '<p>پیام تازه</p>'
+window.document.querySelector('main').appendChild(fresh)
+await wait()
+expect('message rendered later', attr('fresh-block', 'dir'), 'rtl')
 
 window.eval(source)
 expect('second injection is a no-op', window.__workbuddyRtl, true)

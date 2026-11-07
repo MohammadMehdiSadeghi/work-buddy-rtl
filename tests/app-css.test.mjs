@@ -48,10 +48,11 @@ fs.writeFileSync(
 <link rel="stylesheet" href="app.css"></head>
 <body class="vscode-dark">
   <aside class="sk-sidebar"><button class="sk-sidebar-btn" id="side">گفتگوی جدید</button></aside>
-  <div class="cb-chat-message--assistant">
+  <div class="cb-chat-message--assistant" style="width:560px">
     <div class="cb-chat-message-bubble cb-markdown">
       <p id="fa">سلام، این یک پیام فارسی است.</p>
       <p id="en">This is an English message.</p>
+      <p id="mixed">ممنون، الگو ساده است:<br>line-height 1.35 و (text-editor، 16px) ادامه دارد<br>خط سوم هم فارسی است.</p>
       <ul><li id="li1">آیتم اول</li><li id="li2">Second item</li></ul>
       <div class="cb-markdown-pre"><pre id="pre"><code id="code">console.log("سلام")</code></pre></div>
     </div>
@@ -101,13 +102,36 @@ const results = []
 const expect = (name, actual, wanted) => results.push({ name, actual, wanted, ok: actual === wanted })
 
 expect('persian paragraph alignment', await evaluate(`getComputedStyle(document.getElementById('fa')).textAlign`), 'right')
-expect('persian paragraph dir', await evaluate(`document.getElementById('fa').getAttribute('dir')`), 'rtl')
+expect('persian block direction', await evaluate(`document.querySelector('.cb-markdown').getAttribute('dir')`), 'rtl')
 expect('english paragraph untouched', await evaluate(`document.getElementById('en').getAttribute('dir')`), null)
-expect('persian list item', await evaluate(`document.getElementById('li1').getAttribute('dir')`), 'rtl')
+expect(
+  'persian list item inherits',
+  await evaluate(`getComputedStyle(document.getElementById('li1')).direction`),
+  'rtl'
+)
 expect('code direction', await evaluate(`getComputedStyle(document.getElementById('code')).direction`), 'ltr')
 expect('code block direction', await evaluate(`getComputedStyle(document.getElementById('pre')).direction`), 'ltr')
 expect('sidebar label', await evaluate(`document.getElementById('side').getAttribute('dir')`), 'rtl')
 expect('sidebar keeps its centring', await evaluate(`getComputedStyle(document.getElementById('side')).textAlign`), 'center')
+expect(
+  'no line jumps to the left edge',
+  await evaluate(`(() => {
+    const p = document.getElementById('mixed')
+    const box = p.getBoundingClientRect()
+    const range = document.createRange()
+    const offsets = []
+    for (const node of p.childNodes) {
+      if (node.nodeType !== 3) continue
+      range.selectNodeContents(node)
+      const rect = range.getBoundingClientRect()
+      if (rect.width > 1) offsets.push(Math.round(rect.left - box.left))
+    }
+    // every line of a Persian paragraph starts at the right edge, so none of
+    // them may sit on the left margin
+    return offsets.length === 3 && offsets.every((offset) => offset > 20)
+  })()`),
+  true
+)
 expect(
   'the app font stack resolves to Vazir',
   await evaluate(`(async () => {
