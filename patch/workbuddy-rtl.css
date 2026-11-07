@@ -1,6 +1,8 @@
 /* ==========================================================================
    WorkBuddy RTL — Persian font + bidirectional text
    Injected at runtime by tools/launch.mjs; no app file is modified.
+   Colours are never set here: the layer must look right in both the light
+   and the dark theme, so it only changes font, direction and alignment.
    ========================================================================== */
 
 /* 1. Persian font: Vazir variable, bundled (works offline) ---------------- */
@@ -13,8 +15,15 @@
   font-display: swap;
 }
 
-/* Shadow the families the app already uses, but only for Arabic/Persian
-   codepoints: Latin, Cyrillic and CJK keep the app's own fonts. */
+/* 2. Shadow the families the app already asks for, but only for the
+      Arabic/Persian codepoints. Latin, Cyrillic and CJK keep the app's own
+      fonts, and no global `font-family: … !important` is used, so icon fonts
+      and the monospace stack are untouched.
+
+      The families below are the ones WorkBuddy 5.9.x actually names in its
+      stylesheets; "PingFang SC" is first in almost every stack, the rest are
+      fallbacks that matter on macOS and on Windows without PingFang. */
+
 @font-face {
   font-family: "PingFang SC";
   src: url("./fonts/Vazir-Variable.woff2") format("woff2");
@@ -45,61 +54,93 @@
     U+08E3-08FF, U+FB50-FDFF, U+FE70-FEFF;
 }
 
-/* 2. Direction ------------------------------------------------------------ */
-
-:root {
-  --wb-rtl-fa-font: "WorkBuddy Vazir", Vazirmatn, Vazir, Tahoma, sans-serif;
+@font-face {
+  font-family: "Hiragino Sans GB";
+  src: url("./fonts/Vazir-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0898-08E1,
+    U+08E3-08FF, U+FB50-FDFF, U+FE70-FEFF;
 }
 
-/* Anything the script marked as Persian reads right-to-left. */
-[dir="rtl"] {
+@font-face {
+  font-family: "Inter";
+  src: url("./fonts/Vazir-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0898-08E1,
+    U+08E3-08FF, U+FB50-FDFF, U+FE70-FEFF;
+}
+
+@font-face {
+  font-family: "Assistant";
+  src: url("./fonts/Vazir-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0898-08E1,
+    U+08E3-08FF, U+FB50-FDFF, U+FE70-FEFF;
+}
+
+@font-face {
+  font-family: "SF Pro Text";
+  src: url("./fonts/Vazir-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0898-08E1,
+    U+08E3-08FF, U+FB50-FDFF, U+FE70-FEFF;
+}
+
+@font-face {
+  font-family: "Helvetica Neue";
+  src: url("./fonts/Vazir-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0898-08E1,
+    U+08E3-08FF, U+FB50-FDFF, U+FE70-FEFF;
+}
+
+/* 3. Direction ------------------------------------------------------------ */
+
+/* The script only sets dir="rtl" on elements that start with a Persian
+   character, so these rules never touch English-only text.
+
+   Alignment is applied to block text only — never to a blanket
+   `[dir="rtl"] { text-align: right }`, which would also override the centring
+   the app applies to its own buttons and labels. The selector keeps the same
+   specificity as a `.class p` rule in the app stylesheet, so it wins only by
+   being injected last. */
+:is(p, li, h1, h2, h3, h4, h5, h6, blockquote, dt, dd, td, th)[dir="rtl"],
+[dir="rtl"] :is(p, li, h1, h2, h3, h4, h5, h6, blockquote, dt, dd, td, th) {
   text-align: right;
 }
 
-[dir="rtl"] :where(ul, ol) {
+/* Lists and quotes: mirror the indentation the LTR layout uses. */
+[dir="rtl"] :where(.cb-markdown, .markdown-preview__body) :where(ul, ol) {
   padding-left: 0;
   padding-right: 22px;
 }
 
-[dir="rtl"] :where(blockquote) {
+[dir="rtl"] :where(.cb-markdown, .markdown-preview__body) :where(blockquote) {
   border-left: 0;
-  border-right: 3px solid var(--wb-color-border-primary, rgba(0, 0, 0, 0.12));
+  border-right: 3px solid var(--wb-color-border-solid, rgba(128, 128, 128, 0.35));
   padding-left: 0;
   padding-right: 12px;
 }
 
-/* Chat messages: Persian text in a soft wrap, a touch of depth, and code
-opposite the UI background so it pops. */
-[dir="rtl"] :where(.cbm-message, .cbm-compact-message) {
-  background: var(--wb-color-bg-surface, #faf9f6);
-  border-radius: 8px;
-  padding: 6px 10px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+/* Tables read right-to-left, but their numbers stay tabular. */
+[dir="rtl"] :where(.cb-markdown, .markdown-preview__body) :where(td, th) {
+  text-align: right;
 }
 
-[dir="rtl"] :where(pre.cbm-code, .cbm-code) {
-  background: #f2f2f5;
-  border-left: 3px solid var(--wb-color-accent, #7c5cff);
-  border-radius: 6px;
-  padding: 10px 12px;
-  overflow-x: auto;
-}
+/* 4. Code islands stay left-to-right ------------------------------------- */
 
-[dir="rtl"] :where(code.cbm-inline, .cbm-inline-code) {
-  background: #f2f2f5;
-  border-radius: 4px;
-  padding: 1px 5px;
-  font-size: 0.92em;
-}
-
-/* Markdown decides its base direction per paragraph, so an English sentence
-   inside Persian prose neither jumps nor flips its punctuation. */
-:where(.cb-markdown, .markdown-preview__body)
-  :where(p, li, h1, h2, h3, h4, h5, h6, blockquote, dt, dd, td, th) {
-  unicode-bidi: plaintext;
-}
-
-/* Code, terminal and editor islands stay left-to-right and monospace. */
+/* Code, terminal, diff and editor surfaces are always LTR, even inside a
+   Persian bubble: an isolated snippet must not be reordered. */
 :where(
     pre,
     code,
@@ -107,8 +148,8 @@ opposite the UI background so it pops. */
     samp,
     .cb-markdown-pre,
     .cb-markdown-pre *,
-    .md-code,
-    .md-inline,
+    .cr-code-block,
+    .cr-code-block *,
     .xterm,
     .xterm *,
     .monaco-editor,
@@ -121,7 +162,23 @@ opposite the UI background so it pops. */
   text-align: left;
 }
 
-/* The composer is a contenteditable (or textarea) and keeps the app's own
+/* 5. Chat and composer ---------------------------------------------------- */
+
+/* Chat bubbles: the script decides the direction per message; this only makes
+   sure a Persian message is not centred by the app's own rules. */
+:is(.cb-chat-message-bubble, .cb-chat-message--user, .cb-chat-message--assistant)[dir="rtl"],
+[dir="rtl"] :is(.cb-chat-message-bubble, .cb-chat-message--user, .cb-chat-message--assistant) {
+  text-align: right;
+}
+
+/* Markdown decides its base direction per paragraph, so an English sentence
+   inside Persian prose neither jumps nor flips its punctuation. */
+:where(.cb-markdown, .markdown-preview__body)
+  :where(p, li, h1, h2, h3, h4, h5, h6, blockquote, dt, dd, td, th) {
+  unicode-bidi: plaintext;
+}
+
+/* The composer is a contenteditable (or a textarea) and keeps the app's own
    placeholder when empty; the script decides its direction from the text. */
 :where([contenteditable="true"], textarea) {
   unicode-bidi: plaintext;
@@ -129,28 +186,4 @@ opposite the UI background so it pops. */
 
 [dir="rtl"]:where([contenteditable="true"], textarea) {
   text-align: right;
-}
-
-/* Message and inline code islands styled for Persian chat: a soft surface,
-   a left border for code blocks, and tighter inline code. */
-[dir="rtl"] :where(.cbm-message, .cbm-compact-message) {
-  background: var(--wb-color-bg-surface, #faf9f6);
-  border-radius: 8px;
-  padding: 6px 10px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-}
-
-[dir="rtl"] :where(pre.cbm-code, .cbm-code) {
-  background: #f2f2f5;
-  border-left: 3px solid var(--wb-color-accent, #7c5cff);
-  border-radius: 6px;
-  padding: 10px 12px;
-  overflow-x: auto;
-}
-
-[dir="rtl"] :where(code.cbm-inline, .cbm-inline-code) {
-  background: #f2f2f5;
-  border-radius: 4px;
-  padding: 1px 5px;
-  font-size: 0.92em;
 }
