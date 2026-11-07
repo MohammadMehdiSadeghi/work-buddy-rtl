@@ -1,12 +1,13 @@
 # WorkBuddy RTL — Technical notes
 
 Implementation details for the Persian (RTL) layer of the WorkBuddy desktop app
-(WorkBuddy 5.9.4, Electron).
+(verified against WorkBuddy 5.9.4, Electron 30+, Windows 11).
 
 ## 1. Why app.asar cannot be patched
 
-WorkBuddy's renderer lives inside a 182 MB `resources/app.asar`, so the typical
-"add files and link them from index.html" approach means rewriting that archive.
+WorkBuddy's renderer lives inside a ~182 MB `resources/app.asar`, so the usual
+"add files next to the app and link them from `index.html`" approach means
+rewriting that archive.
 
 That was tried first and fails: the app is built with Electron's **ASAR
 integrity validation** fuse enabled. On startup Electron hashes `app.asar` and
@@ -25,40 +26,55 @@ feature, which this project deliberately does not do.
 
 ## 2. Injection architecture
 
-`tools/launch.mjs`:
+`tools/launch.mjs` (process lifecycle) and `tools/inject.mjs` (CDP plumbing):
 
-1. finds the install (`tools/locate.mjs`) and the `WorkBuddyAI.exe` executable,
-2. starts it with `--remote-debugging-port=<random high port>
+1. finds the install (`tools/locate.mjs`, which reads `package.json` out of the
+   archive with `tools/asar.mjs`) and the `WorkBuddyAI.exe` executable,
+2. refuses to start when WorkBuddy is already running — the app takes a
+   single-instance lock, so a second copy would exit and leave no renderer to
+   inject into. `--restart` closes the running instance first (by pid, via
+   `tasklist`/`taskkill`, never by image name),
+3. starts the app with `--remote-debugging-port=<random high port>
    --remote-debugging-address=127.0.0.1`,
-3. polls `http://127.0.0.1:<port>/json/list` until a `page` target whose URL
+4. polls `http://127.0.0.1:<port>/json/list` until a `page` target whose URL
    contains `app.asar/renderer/index.html` appears,
-4. for every such target: `Page.enable`,
-   `Page.addScriptToEvaluateOnNewDocument(bootstrap)` and an immediate
-   `Runtime.evaluate(bootstrap)` so the current document is styled too,
-5. keeps the CDP sessions open, polls the target list every two seconds and
-   injects into new windows (settings, conversations, …) until the app exits.
+5. for every such target: `Page.enable`, two
+   `Page.addScriptToEvaluateOnNewDocument` registrations (stylesheet, direction
+   script) plus two immediate `Runtime.evaluate` calls so the current document
+   is styled as well,
+6. keeps the CDP sessions open, polls the target list every 1.5 s and injects
+   into new windows (settings, conversations, …) until the app exits,
+7. writes `%TEMP%/workbuddy-rtl.json` (`pid`, `port`, `startedAt`) so
+   `--status` can tell whether the running app is a *launched* one, and removes
+   it on exit.
 
-Because the sessions stay open, a reload of any window re-runs the bootstrap via
-the `addScriptToEvaluateOnNewDocument` registration.
+Because the sessions stay open, a reload of any window re-runs both scripts
+through the `addScriptToEvaluateOnNewDocument` registration.
 
 ## 3. Bootstrap payload
 
-The bootstrap is one self-contained IIFE carrying two string literals:
+Each concern is its own self-contained IIFE, and neither uses `eval`:
 
-- the stylesheet, with each `url("./fonts/Vazir-*.woff2")` replaced by a
-  base64 `data:font/woff2` URI (about 175 KB total),
-- the direction script.
+- **stylesheet** — a string literal with every `url("./fonts/Vazir-*.woff2")`
+  replaced by a base64 `data:font/woff2` URI (about 175 KB total). On every
+  document it creates `<style id="workbuddy-rtl-style">` in `<head>`, retries
+  after `DOMContentLoaded` when `<head>` does not exist yet, and replaces the
+  text only when it changed.
+- **direction script** — the guarded IIFE from `patch/workbuddy-rtl.js`.
 
-On every document it creates `<style id="workbuddy-rtl-style">` in `<head>` and
-runs the script once (`window.__workbuddyRtl` guard). Everything is wrapped in
-`try/catch`, so a CDP or DOM failure cannot break the app.
+`eval` is avoided on purpose: a renderer with a Content-Security-Policy that
+lacks `'unsafe-eval'` would break an eval-based bootstrap silently, and the
+failure would look like "the patch does nothing". CDP-injected scripts are not
+subject to page CSP, but a `<style>` element is — WorkBuddy 5.9.4 ships no CSP
+on its main renderer (checked in `renderer/index.html` and the main bundle), so
+a plain `<style>` is enough here.
 
 ## 4. Font strategy
 
-The app ships *Assistant* (Latin), *Source Code Pro* (code) and font stacks
-based on `PingFang SC` / `Segoe UI` / `Microsoft YaHei` — none is a good Persian
-face. The patch declares `@font-face` rules for **those same family names**,
-limited to the Arabic/Persian `unicode-range`:
+The app ships *Assistant* (Latin) and *Source Code Pro* (code) and builds its
+stacks around `PingFang SC` / `Segoe UI` / `Microsoft YaHei` / `Inter` — none is
+a good Persian face. The patch declares `@font-face` rules for **those same
+family names**, limited to the Arabic/Persian `unicode-range`:
 
 ```
 U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0898-08E1,
@@ -68,34 +84,74 @@ U+08E3-08FF, U+FB50-FDFF, U+FE70-FEFF
 Latin, Cyrillic and CJK glyphs keep the app's fonts; only Persian resolves to
 Vazir. The variable font covers every weight from thin to black, so body text,
 labels and headings keep the weight the app asked for. There is no global
-`font-family !important`, which would also replace icon fonts and the monospace
-stack.
+`font-family: … !important`, which would also replace icon fonts and the
+monospace stack.
+
+Families shadowed: `PingFang SC` (first in almost every app stack), `Segoe UI`,
+`Microsoft YaHei`, `Hiragino Sans GB`, `Inter`, `Assistant`, `SF Pro Text`,
+`Helvetica Neue`.
 
 ## 5. Direction
 
-`workbuddy-rtl.js`:
+`patch/workbuddy-rtl.js`:
 
-- computes the composer's direction (`[contenteditable="true"]`, `textarea`)
-  from the **first strong character** on input, composition, focus and click;
-  empty keeps the app's placeholder direction,
-- walks text-bearing leaf elements and sets `dir="rtl"` when the text starts
-  with a strong RTL character, skipping code, terminals, editors, the composer
-  and anything inside them,
-- only ever manages its own `dir` attributes (`data-wb-rtl="1"`), never the
-  app's,
-- coalesces work with a 120 ms timer behind a `MutationObserver`.
+- computes the composer's direction (`textarea`, `[contenteditable]`) from the
+  **first strong character** on input, composition, focus and click; empty
+  input clears the attribute so the app's placeholder keeps its own direction,
+- walks text nodes once with a `TreeWalker` and sets `dir="rtl"` on the parent
+  of any text that starts with a strong RTL character. A `TreeWalker` is much
+  cheaper than `querySelectorAll` over twenty tag names, and it reaches text
+  inside components the patch knows nothing about,
+- skips code, terminals, editors and the composer (`.cb-markdown-pre`,
+  `.cr-code-block`, `.xterm`, `.monaco-editor`, `.cm-editor`, `pre`, `code`),
+- only ever manages its own `dir` attributes (`data-wb-rtl="1"`); a direction
+  the app set itself is never touched,
+- coalesces work with a 120 ms timer behind a `MutationObserver` on `<body>`,
+- clears the attribute in a separate, rarer pass, so an element that was
+  Persian and became English does not keep a stale direction.
 
-The CSS turns `[dir="rtl"]` into right alignment, mirrors list and blockquote
-indentation, and gives markdown paragraphs `unicode-bidi: plaintext` so mixed
-English/Persian sentences read in the right order.
+Two details that caused real bugs and are worth keeping in mind:
 
-## 6. Limitations
+- **`.value` is not text.** A `<button>`, `<li>` or `<option>` exposes an empty
+  `.value`; reading it instead of `textContent` made every Persian sidebar
+  label look empty. Only `textarea` and `input` use `.value`.
+- **Specificity of alignment.** A blanket `[dir="rtl"] { text-align: right }`
+  also overrode the centring the app applies to its buttons. Alignment is now
+  declared only for block text (`p, li, h1…h6, blockquote, dt, dd, td, th`)
+  with the same specificity as a `.class p` rule, so it wins by being injected
+  last and nothing else moves.
+
+The stylesheet also gives markdown paragraphs `unicode-bidi: plaintext` so
+mixed English/Persian sentences read in the right order, and forces
+`direction: ltr` on code, terminal and editor islands.
+
+No colour is ever set: every surface, border and background keeps the app's
+theme tokens, so light and dark themes both look correct.
+
+## 6. Tests
+
+| Command | What it checks |
+| --- | --- |
+| `node tools/verify.mjs` | patch files, CSS/JS syntax, font file, tool syntax, install detection |
+| `node tests/direction.test.mjs` | the direction script against a jsdom fixture (needs `npm install`) |
+| `node tests/browser.test.mjs` | the whole CDP path in headless Chrome/Edge: stylesheet applied, font resolved, reload re-applied |
+
+`tests/browser.test.mjs` uses the same `tools/inject.mjs` calls the launcher
+makes, so a green run means the injection path works in a real Chromium; it
+skips itself when no Chrome or Edge is installed.
+
+## 7. Limitations
 
 - Content inside a webview/iframe or a shadow root is not reached by page-level
   CSS.
 - The first paint may be un-styled for a fraction of a second, until the
   launcher connects and injects.
 - WorkBuddy must be started by the launcher; starting the `.exe` directly gives
-  the stock English/Chinese UI (and no debug port).
+  the stock UI (and no debug port). An update does not remove the layer — it
+  lives outside the app — but a launcher started before the update keeps
+  injecting the patch it read at startup, so restart it after an update.
 - If WorkBuddy changes its renderer URL or drops DevTools support, the launcher
-  needs updating.
+  needs updating. `--status` reports the detected install and version so the
+  cause is visible.
+- The layer changes font, direction and alignment only. It does not translate
+  the app's interface.
