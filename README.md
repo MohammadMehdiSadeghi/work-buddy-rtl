@@ -201,7 +201,9 @@ Or through the PowerShell wrapper:
 | Part of the UI stays left-aligned | that part lives in a webview/iframe or a shadow root, which page CSS cannot reach | open an issue naming the section |
 | Fonts look too large/small | the layer does not change sizes | adjust WorkBuddy's own appearance settings |
 | A snippet inside a Persian answer is right-aligned | it is not inside a recognised code container | open an issue with the block's HTML |
-| `--status` shows `Launcher: not active` | the app is running without the layer | restart it through the shortcut |
+| `--status` shows `Launcher: not active` | the app is running without the layer | close it completely and open the **WorkBuddy RTL** shortcut; `--status` then shows `active` with a build id |
+| Nothing changed after an edit to `patch/` | the layer is read once, at startup | restart through the shortcut; `Patch` in `--status` shows which build is on disk |
+| The shortcut does nothing | it runs hidden, so failures are silent | read `%TEMP%\workbuddy-rtl.log` (its path is printed by `--status`) |
 
 ## Repository Layout
 
@@ -397,7 +399,9 @@ node tools/launch.mjs      # اجرای WorkBuddy همراه با لایه
 | لایه بعد از مدتی از بین می‌رود | فرایند لانچر بسته شده | لانچر را باز بگذارید؛ خودش با بسته‌شدن WorkBuddy تمام می‌شود |
 | بخشی از رابط هنوز چپ‌چین است | آن بخش داخل webview/iframe یا shadow root است | با ذکر نام آن بخش issue باز کنید |
 | فونت خیلی بزرگ یا کوچک است | لایه اندازه‌ها را تغییر نمی‌دهد | از تنظیمات ظاهری خود WorkBuddy تنظیم کنید |
-| `Launcher: not active` در `--status` | برنامه بدون لایه در حال اجراست | با میان‌بر دوباره اجرا کنید |
+| `Launcher: not active` در `--status` | برنامه بدون لایه در حال اجراست | کامل ببندید و با میان‌بر **WorkBuddy RTL** باز کنید؛ بعد `--status` باید `active` با یک build id نشان دهد |
+| بعد از تغییر در `patch/` هیچ چیز عوض نشد | لایه فقط یک‌بار و هنگام اجرا خوانده می‌شود | با میان‌بر ری‌استارت کنید؛ خط `Patch` در `--status` می‌گوید کدام نسخه روی دیسک است |
+| میان‌بر هیچ کاری نمی‌کند | میان‌بر مخفی اجرا می‌شود و خطا دیده نمی‌شود | فایل `%TEMP%\workbuddy-rtl.log` را بخوانید (مسیرش در `--status` چاپ می‌شود) |
 
 </div>
 

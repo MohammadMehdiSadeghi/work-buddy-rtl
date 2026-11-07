@@ -21,11 +21,12 @@ import { spawn, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { findInstalls } from './locate.mjs'
 import { readEntry } from './asar.mjs'
-import { checkPatch, cssSource, inject, isTarget, listTargets, loadPatch, waitForTargets } from './inject.mjs'
+import { checkPatch, cssSource, inject, isTarget, listTargets, loadPatch, patchId, waitForTargets } from './inject.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const PATCH_DIR = path.resolve(HERE, '..', 'patch')
 const STATE_FILE = path.join(os.tmpdir(), 'workbuddy-rtl.json')
+const LOG_FILE = path.join(os.tmpdir(), 'workbuddy-rtl.log')
 
 const argv = process.argv.slice(2)
 const arg = (name) => {
@@ -39,8 +40,25 @@ const quiet = has('--quiet') || has('-q')
 const split = argv.indexOf('--')
 const appArgs = split >= 0 ? argv.slice(split + 1) : []
 
+// The shortcut runs this hidden, so every line also goes to a log file: when
+// something fails there is a file to look at instead of an empty window.
+function record(line) {
+  try {
+    if (fs.existsSync(LOG_FILE) && fs.statSync(LOG_FILE).size > 200 * 1024) {
+      fs.renameSync(LOG_FILE, `${LOG_FILE}.1`)
+    }
+    fs.appendFileSync(LOG_FILE, `${new Date().toISOString()}  ${line}\n`)
+  } catch {}
+}
+
 const log = (...args) => {
+  record(args.join(' '))
   if (!quiet) console.log(...args)
+}
+
+const fail = (...args) => {
+  record(`ERROR ${args.join(' ')}`)
+  console.error(...args)
 }
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -128,14 +146,23 @@ function clearState() {
 
 // ------------------------------------------------------------------- main ---
 
-function describe(install, exe, pids, patch) {
+function describe(install, exe, pids, patch, build) {
   const state = readState()
   const live = state && pids.includes(state.pid)
   console.log(`Install    : ${install.dir}${install.version ? `  (v${install.version})` : ''}`)
   console.log(`Executable : ${exe}`)
   console.log(`Running    : ${pids.length ? `yes  (pid ${pids.join(', ')})` : 'no'}`)
-  console.log(`Launcher   : ${live ? `active  (pid ${state.pid}, CDP port ${state.port})` : 'not active'}`)
-  console.log(`Patch      : ${patch.ok ? 'ok' : `incomplete — ${patch.problems.join('; ')}`}`)
+  console.log(
+    `Launcher   : ${live ? `active  (pid ${state.pid}, CDP port ${state.port}, build ${state.patch || '?'})` : 'not active'}`
+  )
+  console.log(`Patch      : ${patch.ok ? `ok  (build ${build})` : `incomplete — ${patch.problems.join('; ')}`}`)
+  console.log(`Log        : ${LOG_FILE}`)
+  if (pids.length && !live) {
+    console.log('')
+    console.log('This WorkBuddy was not started by the launcher, so the layer is not applied.')
+    console.log('Close it completely (tray included) and open the "WorkBuddy RTL" shortcut,')
+    console.log('or run: node tools/launch.mjs --restart')
+  }
 }
 
 async function main() {
@@ -143,7 +170,7 @@ async function main() {
   let install = rootArg ? { dir: path.resolve(rootArg), version: '' } : findInstalls()[0]
 
   if (!install) {
-    console.error('WorkBuddy not found. Pass --root "<install folder>".')
+    fail('WorkBuddy not found. Pass --root "<install folder>".')
     process.exit(1)
   }
 
@@ -158,25 +185,26 @@ async function main() {
 
   const exe = findExe(install.dir)
   if (!exe) {
-    console.error(`WorkBuddy executable not found in ${install.dir}`)
+    fail(`WorkBuddy executable not found in ${install.dir}`)
     process.exit(1)
   }
 
   const exeName = path.basename(exe)
   const patch = checkPatch(PATCH_DIR)
+  const build = patchId(PATCH_DIR)
 
   if (has('--check')) {
-    describe(install, exe, pidsOf(exeName), patch)
+    describe(install, exe, pidsOf(exeName), patch, build)
     process.exit(patch.ok ? 0 : 1)
   }
 
   if (has('--status')) {
-    describe(install, exe, pidsOf(exeName), patch)
+    describe(install, exe, pidsOf(exeName), patch, build)
     return
   }
 
   if (!patch.ok) {
-    console.error(`patch is incomplete: ${patch.problems.join('; ')}`)
+    fail(`patch is incomplete: ${patch.problems.join('; ')}`)
     process.exit(1)
   }
 
@@ -192,7 +220,7 @@ async function main() {
     log('closing the running instance...')
     terminate(pids)
     if (!(await waitGone(exeName, 10000))) {
-      console.error('could not close the running WorkBuddy instance')
+      fail('could not close the running WorkBuddy instance')
       process.exit(1)
     }
   }
@@ -209,7 +237,7 @@ async function main() {
   })
 
   if (!child.pid) {
-    console.error('could not start WorkBuddy')
+    fail('could not start WorkBuddy')
     process.exit(1)
   }
 
@@ -217,12 +245,12 @@ async function main() {
   child.on('exit', () => {
     exited = true
   })
-  writeState({ pid: child.pid, port, startedAt: new Date().toISOString(), dir: install.dir })
+  writeState({ pid: child.pid, port, patch: build, startedAt: new Date().toISOString(), dir: install.dir })
 
   const { targets, dead } = await waitForTargets(port, { timeout: 120000, isDead: () => exited })
   if (dead) {
     clearState()
-    console.error('WorkBuddy exited before its window was ready (another instance may be open).')
+    fail('WorkBuddy exited before its window was ready (another instance may be open).')
     process.exit(1)
   }
   if (!targets.length) {
@@ -230,7 +258,7 @@ async function main() {
     try {
       child.kill()
     } catch {}
-    console.error('timed out waiting for the WorkBuddy window')
+    fail('timed out waiting for the WorkBuddy window')
     process.exit(1)
   }
 
@@ -240,11 +268,11 @@ async function main() {
       sockets.set(target.id, await inject(target, sources))
       log(`injected: ${target.title || target.url}`)
     } catch (err) {
-      console.error(`could not inject into ${target.url}: ${err.message}`)
+      fail(`could not inject into ${target.url}: ${err.message}`)
     }
   }
 
-  log('RTL layer active. Leave this process running; it stops with WorkBuddy.')
+  log(`RTL layer active (build ${build}). Leave this process running; it stops with WorkBuddy.`)
 
   // Settings, conversations and every new window get their own renderer.
   const timer = setInterval(async () => {
@@ -284,6 +312,6 @@ async function main() {
 
 main().catch((err) => {
   clearState()
-  console.error(err.message || err)
+  fail(err.message || err)
   process.exit(1)
 })

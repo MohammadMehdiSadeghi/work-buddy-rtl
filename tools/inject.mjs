@@ -8,6 +8,7 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
+import { createHash } from 'node:crypto'
 
 export const TARGET = /renderer\/index\.html/i
 export const isTarget = (target) => target.type === 'page' && TARGET.test(target.url || '')
@@ -50,6 +51,15 @@ export function checkPatch(patchDir) {
   return { ok: problems.length === 0, problems }
 }
 
+/** Short hash of the patch, so "which build am I running?" has an answer. */
+export function patchId(patchDir) {
+  const hash = createHash('sha1')
+  for (const file of ['workbuddy-rtl.css', 'workbuddy-rtl.js']) {
+    hash.update(fs.readFileSync(path.join(patchDir, file)))
+  }
+  return hash.digest('hex').slice(0, 7)
+}
+
 /** Read the patch and inline the font, so the payload needs no file:// access. */
 export function loadPatch(patchDir) {
   const checked = checkPatch(patchDir)
@@ -62,7 +72,7 @@ export function loadPatch(patchDir) {
       return `data:font/woff2;base64,${fs.readFileSync(file).toString('base64')}`
     })
 
-  return { css, js: fs.readFileSync(path.join(patchDir, 'workbuddy-rtl.js'), 'utf8') }
+  return { css, js: fs.readFileSync(path.join(patchDir, 'workbuddy-rtl.js'), 'utf8'), id: patchId(patchDir) }
 }
 
 // ------------------------------------------------------------------ payload ---
