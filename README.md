@@ -217,7 +217,7 @@ Or through the PowerShell wrapper:
 | A snippet inside a Persian answer is right-aligned | it is not inside a recognised code container | open an issue with the block's HTML |
 | `--status` shows `Launcher: not active` | the app is running without the layer | close it completely and open the **WorkBuddy RTL** shortcut; `--status` then shows `active` with a build id |
 | Nothing changed after an edit to `patch/` | the layer is read once, at startup | restart through the shortcut; `Patch` in `--status` shows which build is on disk |
-| The shortcut does nothing | it runs hidden, so failures are silent | read `%TEMP%\workbuddy-rtl.log` (its path is printed by `--status`) |
+| The shortcut does nothing | it runs hidden, so failures are silent | read `%TEMP%\workbuddy-rtl.log` (its path is printed by `--status`); a missing Node runtime is now written there, and the wrapper falls back to the runtime WorkBuddy ships |
 
 ## Repository Layout
 
@@ -429,7 +429,7 @@ node tools/launch.mjs      # اجرای WorkBuddy همراه با لایه
 | فونت خیلی بزرگ یا کوچک است | لایه اندازه‌ها را تغییر نمی‌دهد | از تنظیمات ظاهری خود WorkBuddy تنظیم کنید |
 | `Launcher: not active` در `--status` | برنامه بدون لایه در حال اجراست | کامل ببندید و با میان‌بر **WorkBuddy RTL** باز کنید؛ بعد `--status` باید `active` با یک build id نشان دهد |
 | بعد از تغییر در `patch/` هیچ چیز عوض نشد | لایه فقط یک‌بار و هنگام اجرا خوانده می‌شود | با میان‌بر ری‌استارت کنید؛ خط `Patch` در `--status` می‌گوید کدام نسخه روی دیسک است |
-| میان‌بر هیچ کاری نمی‌کند | میان‌بر مخفی اجرا می‌شود و خطا دیده نمی‌شود | فایل `%TEMP%\workbuddy-rtl.log` را بخوانید (مسیرش در `--status` چاپ می‌شود) |
+| میان‌بر هیچ کاری نمی‌کند | میان‌بر مخفی اجرا می‌شود و خطا دیده نمی‌شود | فایل `%TEMP%\workbuddy-rtl.log` را بخوانید (مسیرش در `--status` چاپ می‌شود)؛ نبودن Node هم آنجا نوشته می‌شود و اسکریپت حالا از Node همراه خود WorkBuddy هم استفاده می‌کند |
 
 </div>
 

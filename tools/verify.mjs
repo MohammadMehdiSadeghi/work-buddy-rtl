@@ -111,6 +111,7 @@ check('the shortcut asks for a patched window', () => {
   assert(/-Ensure/.test(shortcut), 'the shortcut does not pass -Ensure, so clicking it can leave an unpatched app')
   const wrapper = fs.readFileSync(path.join(HERE, '..', 'windows', 'launch-windows.ps1'), 'utf8')
   assert(/\$Ensure/.test(wrapper), 'the PowerShell wrapper drops -Ensure')
+  assert(/\.workbuddy-ai\\binaries\\node/.test(wrapper), 'the wrapper cannot find the Node runtime WorkBuddy ships')
   return 'shortcut passes -Ensure'
 })
 

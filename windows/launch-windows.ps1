@@ -9,19 +9,37 @@ param(
 $ErrorActionPreference = 'Continue'
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $Launcher = Join-Path $RepoRoot 'tools\launch.mjs'
+$LogFile = Join-Path $env:TEMP 'workbuddy-rtl.log'
+
+# The shortcut runs this hidden, so a failure has to leave a trace somewhere a
+# person can find: same file the launcher writes to, same path --status prints.
+function Fail([string]$message) {
+  try { Add-Content -Path $LogFile -Value ("{0}  ERROR {1}" -f (Get-Date -Format o), $message) } catch {}
+  Write-Host $message -ForegroundColor Yellow
+  exit 1
+}
 
 $node = (Get-Command node -ErrorAction SilentlyContinue | Select-Object -First 1).Source
 if (-not $node) {
   $known = @(
     "$env:ProgramFiles\nodejs\node.exe",
     "${env:ProgramFiles(x86)}\nodejs\node.exe",
-    "$env:LOCALAPPDATA\Programs\nodejs\node.exe"
+    "$env:LOCALAPPDATA\Programs\nodejs\node.exe",
+    "$env:APPDATA\npm\node.exe"
   )
+  # WorkBuddy ships its own Node runtime and does not add it to the persistent
+  # PATH, so on a machine without a separate Node install the shortcut used to
+  # die here — invisibly, because it runs windowless. Look for the bundled copy.
+  $bundledRoot = Join-Path $env:USERPROFILE '.workbuddy-ai\binaries\node\versions'
+  if (Test-Path $bundledRoot) {
+    $known += Get-ChildItem $bundledRoot -Directory -ErrorAction SilentlyContinue |
+      Sort-Object Name -Descending |
+      ForEach-Object { Join-Path $_.FullName 'node.exe' }
+  }
   $node = $known | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
 }
 if (-not $node) {
-  Write-Host 'Node.js 22+ is required: "node" was not found in PATH.' -ForegroundColor Yellow
-  exit 1
+  Fail 'Node.js 22+ is required: "node" was not found in PATH, and WorkBuddy ships no bundled runtime.'
 }
 
 function Get-Candidates {
@@ -47,8 +65,7 @@ foreach ($candidate in Get-Candidates) {
 }
 
 if (-not $install) {
-  Write-Host 'WorkBuddy not found — pass -Root to tools/launch.mjs if it lives elsewhere.' -ForegroundColor Yellow
-  exit 1
+  Fail 'WorkBuddy not found — pass -Root to tools/launch.mjs if it lives elsewhere.'
 }
 
 # The launcher does the process handling itself (it knows the exact executable
