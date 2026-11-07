@@ -1,7 +1,7 @@
 # WorkBuddy RTL — Technical notes
 
 Implementation details for the Persian (RTL) layer of the WorkBuddy desktop app
-(verified against WorkBuddy 5.9.4, Electron 30+, Windows 11).
+(verified against WorkBuddy 5.9.4 on Windows 11).
 
 ## 1. Why app.asar cannot be patched
 
