@@ -210,6 +210,8 @@ Or through the PowerShell wrapper:
 | `tools/verify.mjs` | static checks: patch files, syntax, font, tools, install |
 | `tests/direction.test.mjs` | the direction script against a jsdom fixture |
 | `tests/browser.test.mjs` | the full CDP path in headless Chrome/Edge |
+| `tests/app-css.test.mjs` | the patch on top of the app's own stylesheets |
+| `tests/browser-path.mjs` | finds a Chrome/Edge binary for the two browser tests |
 | `windows/launch-windows.ps1` | PowerShell wrapper (`-Status`, `-Check`, `-Restart`) |
 | `windows/install-shortcut.ps1` | desktop / Start-menu shortcut |
 | `assets/workbuddy-rtl-banner.svg` | the banner above |
@@ -219,15 +221,19 @@ Or through the PowerShell wrapper:
 
 ```bash
 node tools/verify.mjs            # static checks, no dependencies
-npm install                      # only for the two tests below (jsdom)
+npm install                      # only for the tests below (jsdom)
 node tests/direction.test.mjs    # direction behaviour in a DOM
 node tests/browser.test.mjs      # end-to-end injection in headless Chrome/Edge
+node tests/app-css.test.mjs      # the same, on top of the app's own stylesheets
 ```
 
 `tests/browser.test.mjs` uses the same `tools/inject.mjs` calls as the
 launcher, so a green run means the injection path really works in a Chromium
-renderer — including the reload case. It skips itself when no Chrome or Edge is
-installed.
+renderer — including the reload case. `tests/app-css.test.mjs` goes one step
+further: it reads every `.css` file out of the installed `app.asar` (154 files
+on 5.9.4), loads them into headless Chrome together with the patch, and checks
+that the Persian rules still win against the app's real specificity and font
+stacks. Both skip themselves when the app or a browser is missing.
 
 ## Security Note
 

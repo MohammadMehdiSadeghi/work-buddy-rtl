@@ -4,6 +4,7 @@ import path from 'node:path'
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { connectTarget, cssSource, inject, isTarget, listTargets, loadPatch } from '../tools/inject.mjs'
+import { findBrowser } from './browser-path.mjs'
 
 // End-to-end check of the injection path in a real Chromium: the same CDP
 // calls the launcher makes, against a fixture that mimics WorkBuddy's DOM.
@@ -14,24 +15,7 @@ const ROOT = path.resolve(HERE, '..')
 const FIXTURE = path.join(os.tmpdir(), 'workbuddy-rtl-fixture')
 const PORT = 9411 + Math.floor(Math.random() * 400)
 
-function browser() {
-  const candidates =
-    process.platform === 'win32'
-      ? [
-          path.join(process.env['PROGRAMFILES'] || 'C:/Program Files', 'Google/Chrome/Application/chrome.exe'),
-          path.join(process.env['PROGRAMFILES(X86)'] || 'C:/Program Files (x86)', 'Microsoft/Edge/Application/msedge.exe'),
-          path.join(process.env.LOCALAPPDATA || '', 'Google/Chrome/Application/chrome.exe'),
-        ]
-      : process.platform === 'darwin'
-        ? [
-            '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-            '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
-          ]
-        : ['/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/microsoft-edge']
-  return candidates.find((file) => file && fs.existsSync(file))
-}
-
-const exe = browser()
+const exe = findBrowser()
 if (!exe) {
   console.log('skip: no Chrome or Edge found')
   process.exit(0)

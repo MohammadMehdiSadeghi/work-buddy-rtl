@@ -135,10 +135,15 @@ theme tokens, so light and dark themes both look correct.
 | `node tools/verify.mjs` | patch files, CSS/JS syntax, font file, tool syntax, install detection |
 | `node tests/direction.test.mjs` | the direction script against a jsdom fixture (needs `npm install`) |
 | `node tests/browser.test.mjs` | the whole CDP path in headless Chrome/Edge: stylesheet applied, font resolved, reload re-applied |
+| `node tests/app-css.test.mjs` | the same, but on top of every `.css` inside the installed `app.asar` — proves the patch wins against the app's real specificity |
 
-`tests/browser.test.mjs` uses the same `tools/inject.mjs` calls the launcher
-makes, so a green run means the injection path works in a real Chromium; it
-skips itself when no Chrome or Edge is installed.
+`tests/browser.test.mjs` and `tests/app-css.test.mjs` use the same
+`tools/inject.mjs` calls the launcher makes, so a green run means the injection
+path works in a real Chromium. The second one is the important one: it loads
+the app's own 154 stylesheets (about 9 MB on 5.9.4) into the page, so a rule
+that loses a specificity fight shows up as a failure instead of as "the patch
+does nothing on my machine". Both skip themselves when WorkBuddy or a browser
+is missing.
 
 ## 7. Limitations
 
