@@ -44,12 +44,35 @@ feature, which this project deliberately does not do.
    is styled as well,
 6. keeps the CDP sessions open, polls the target list every 1.5 s and injects
    into new windows (settings, conversations, …) until the app exits,
-7. writes `%TEMP%/workbuddy-rtl.json` (`pid`, `port`, `startedAt`) so
+7. asks each injected renderer whether the bundled font actually decoded
+   (`probeFont` → `document.fonts`), because a stylesheet that loads while the
+   font fails to parse looks exactly like an unpatched app; the log records
+   `font: <loaded>/<faces> faces loaded` and a warning is printed when nothing
+   loaded,
+8. writes `%TEMP%/workbuddy-rtl.json` (`pid`, `port`, `startedAt`, `patch`) so
    `--status` can tell whether the running app is a *launched* one, and removes
    it on exit.
 
 Because the sessions stay open, a reload of any window re-runs both scripts
 through the `addScriptToEvaluateOnNewDocument` registration.
+
+### `--ensure`, and why the shortcut uses it
+
+The launcher cannot attach to an app it did not start: Electron's debug port is
+fixed at spawn time, so a WorkBuddy opened from its own icon has no port to
+connect to and stays unpatched. With a *hidden* shortcut this used to fail
+silently — the user clicked, nothing visibly happened, and the window was still
+unpatched.
+
+`--ensure` closes that gap. It is the only mode allowed to replace an instance
+the launcher did not start, and it only does so when the state file does not
+show a live launcher for this install:
+
+| Running? | Launcher state file | Result |
+| --- | --- | --- |
+| no | — | start with the layer |
+| yes | live, same install dir | exit quietly (already patched) |
+| yes | missing or stale | terminate by pid, start with the layer |
 
 ## 3. Bootstrap payload
 

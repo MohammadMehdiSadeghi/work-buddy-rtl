@@ -130,6 +130,19 @@ cd work-buddy-rtl
 From now on start WorkBuddy from that shortcut. It runs the launcher hidden,
 injects the layer and closes itself when the app exits.
 
+The shortcut uses `--ensure`, which means it is safe to click at any time:
+
+| Situation when you click it | What happens |
+| --- | --- |
+| WorkBuddy is closed | it starts with the layer |
+| WorkBuddy is open **with** the layer | nothing — the launcher exits quietly |
+| WorkBuddy is open **without** the layer (started from its own icon) | that instance is closed and reopened with the layer |
+
+That third case is the one that used to be silent: opening WorkBuddy from its
+own shortcut left the window unpatched, and the hidden launcher only printed a
+line nobody could see. Now clicking the RTL shortcut is always the way to get
+a patched window.
+
 If PowerShell refuses to run the script, use it once in the same window:
 
 ```powershell
@@ -158,6 +171,7 @@ on macOS and Linux use the launcher directly (or point a desktop entry at it).
 | `node tools/launch.mjs --status` | report install, version, running state and patch health — **never** starts anything |
 | `node tools/launch.mjs --check` | same report, exit code `1` when the patch is broken |
 | `node tools/launch.mjs --restart` | close a running instance, then start with the layer |
+| `node tools/launch.mjs --ensure` | make the layer live: start, do nothing if already patched, restart only if the running copy has no layer |
 | `node tools/launch.mjs --root <dir>` | use an install that is not in a standard location |
 | `node tools/launch.mjs --port <n>` | pin the DevTools port instead of a random one |
 | `node tools/launch.mjs --quiet` | no output (used by the hidden shortcut) |
@@ -345,6 +359,19 @@ cd work-buddy-rtl
 از این پس WorkBuddy را با همان میان‌بر باز کنید. میان‌بر لانچر را مخفی اجرا
 می‌کند، لایه را تزریق می‌کند و با بسته‌شدن برنامه خودش تمام می‌شود.
 
+میان‌بر با `--ensure` کار می‌کند، پس هر وقت آن را زدید رفتار درستی دارد:
+
+| وضعیت هنگام کلیک | نتیجه |
+| --- | --- |
+| WorkBuddy بسته است | با لایه باز می‌شود |
+| باز است و لایه **فعال** است | هیچ کاری نمی‌کند؛ لانچر بی‌صدا خارج می‌شود |
+| باز است ولی لایه **فعال نیست** (از آیکون خودش باز شده) | همان نسخه بسته و با لایه دوباره باز می‌شود |
+
+حالت سوم همان جایی است که قبلاً بی‌صدا از دست می‌رفت: اگر WorkBuddy را از
+میان‌بر خودش باز می‌کردید، پنجره بدون لایه می‌ماند و لانچر مخفی فقط یک خط در
+فایل لاگ می‌نوشت که کسی نمی‌دید. حالا کلیک روی میان‌بر RTL همیشه یعنی
+«پنجره‌ای با لایه».
+
 اگر PowerShell اجازه اجرا نداد، یک‌بار در همان پنجره اجرا کنید:
 
 ```powershell
@@ -370,6 +397,7 @@ node tools/launch.mjs      # اجرای WorkBuddy همراه با لایه
 | `node tools/launch.mjs --status` | گزارش مسیر نصب، نسخه، وضعیت اجرا و سلامت پچ — **برنامه را اجرا نمی‌کند** |
 | `node tools/launch.mjs --check` | همان گزارش، با کد خروج `1` اگر پچ ناقص باشد |
 | `node tools/launch.mjs --restart` | بستن نسخه در حال اجرا و سپس اجرای دوباره با لایه |
+| `node tools/launch.mjs --ensure` | لایه را فعال کن: اگر لازم بود اجرا کن، اگر فعال است کاری نکن، و فقط وقتی نسخه در حال اجرا لایه ندارد دوباره اجرا کن |
 | `node tools/launch.mjs --root <dir>` | مسیر نصب غیراستاندارد |
 | `node tools/launch.mjs --port <n>` | تعیین پورت ثابت به‌جای پورت تصادفی |
 | `node tools/launch.mjs --quiet` | بدون خروجی (برای میان‌بر مخفی) |

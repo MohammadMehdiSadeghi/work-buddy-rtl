@@ -2,6 +2,7 @@ param(
   [switch]$Status,
   [switch]$Check,
   [switch]$Restart,
+  [switch]$Ensure,
   [switch]$Windowless
 )
 
@@ -57,6 +58,7 @@ $nodeArgs = @($Launcher, '--root', $install)
 if ($Status) { $nodeArgs += '--status' }
 if ($Check) { $nodeArgs += '--check' }
 if ($Restart) { $nodeArgs += '--restart' }
+if ($Ensure) { $nodeArgs += '--ensure' }
 if ($Windowless) { $nodeArgs += '--quiet' }
 
 & $node @nodeArgs

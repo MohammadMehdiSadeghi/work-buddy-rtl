@@ -11,6 +11,8 @@
 //   node tools/launch.mjs --status        report state, never starts anything
 //   node tools/launch.mjs --check         verify the patch, exit 1 if broken
 //   node tools/launch.mjs --restart       close a running instance first
+//   node tools/launch.mjs --ensure        make the layer live, restarting only
+//                                         when the running copy does not have it
 //   node tools/launch.mjs --root <dir> --port <n> --quiet
 //   node tools/launch.mjs -- --user-data-dir=...   extra switches for the app
 
@@ -21,7 +23,17 @@ import { spawn, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { findInstalls } from './locate.mjs'
 import { readEntry } from './asar.mjs'
-import { checkPatch, cssSource, inject, isTarget, listTargets, loadPatch, patchId, waitForTargets } from './inject.mjs'
+import {
+  checkPatch,
+  cssSource,
+  inject,
+  isTarget,
+  listTargets,
+  loadPatch,
+  patchId,
+  probeFont,
+  waitForTargets,
+} from './inject.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const PATCH_DIR = path.resolve(HERE, '..', 'patch')
@@ -35,6 +47,10 @@ const arg = (name) => {
 }
 const has = (name) => argv.includes(name)
 const quiet = has('--quiet') || has('-q')
+// --ensure is what the desktop shortcut uses: "make sure the layer is live".
+// It is the only mode allowed to close a WorkBuddy it did not start, because
+// the user's intent is exactly that, and it does nothing when already patched.
+const ensure = has('--ensure')
 
 // Everything after `--` is handed to the app untouched.
 const split = argv.indexOf('--')
@@ -209,11 +225,22 @@ async function main() {
   }
 
   const pids = pidsOf(exeName)
+  const running = readState()
+  const liveLauncher = running && pids.includes(running.pid) && running.dir === install.dir
+
   if (pids.length && !has('--restart')) {
-    console.log(`WorkBuddy is already running (pid ${pids.join(', ')}).`)
-    console.log('The RTL layer is only injected when the app is started by this launcher.')
-    console.log('Close WorkBuddy and run this again, or run it with --restart.')
-    return
+    if (ensure && liveLauncher) {
+      log(`already running with the layer (pid ${running.pid}, build ${running.patch || '?'})`)
+      return
+    }
+    if (!ensure) {
+      console.log(`WorkBuddy is already running (pid ${pids.join(', ')}).`)
+      console.log('The RTL layer is only injected when the app is started by this launcher.')
+      console.log('Close WorkBuddy and run this again, or run it with --restart.')
+      return
+    }
+    // --ensure: the running copy has no layer, so replacing it is the point.
+    log('WorkBuddy is running without the layer; replacing that instance...')
   }
 
   if (pids.length) {
@@ -263,13 +290,31 @@ async function main() {
   }
 
   const sockets = new Map()
+  let fontOk = false
   for (const target of targets) {
     try {
-      sockets.set(target.id, await inject(target, sources))
+      const socket = await inject(target, sources)
+      sockets.set(target.id, socket)
       log(`injected: ${target.title || target.url}`)
+      const font = await probeFont(socket)
+      if (font && font.loaded > 0) fontOk = true
+      if (font) log(`font: ${font.loaded}/${font.faces} faces loaded, vazir=${font.vazir}`)
+      else log('font: could not be verified in this renderer')
     } catch (err) {
       fail(`could not inject into ${target.url}: ${err.message}`)
     }
+  }
+
+  if (!sockets.size) {
+    clearState()
+    fail('the layer was not injected into any window')
+    process.exit(1)
+  }
+
+  // Injection can succeed while the font silently fails to decode, and the
+  // result looks exactly like an unpatched app. Say so instead of pretending.
+  if (!fontOk) {
+    log('WARNING the Persian font did not report as loaded — text may fall back to a system font')
   }
 
   log(`RTL layer active (build ${build}). Leave this process running; it stops with WorkBuddy.`)

@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { connectTarget, cssSource, inject, isTarget, listTargets, loadPatch } from '../tools/inject.mjs'
+import { connectTarget, cssSource, inject, isTarget, listTargets, loadPatch, probeFont } from '../tools/inject.mjs'
 import { findBrowser } from './browser-path.mjs'
 
 // End-to-end check of the injection path in a real Chromium: the same CDP
@@ -85,6 +85,12 @@ const results = []
 const expect = (name, actual, wanted) => results.push({ name, actual, wanted, ok: actual === wanted })
 
 expect('stylesheet is in the document', await evaluate(`!!document.getElementById('workbuddy-rtl-style')`), true)
+
+// The launcher reports "layer active" only after this probe says the font
+// decoded — a stylesheet that loads but a font that does not looks identical
+// to an unpatched app, so it is asserted here as well.
+const font = await probeFont(socket)
+expect('the bundled font decodes in a real renderer', font && font.loaded > 0, true)
 expect('persian block direction', await evaluate(`document.querySelector('.cb-markdown').getAttribute('dir')`), 'rtl')
 expect('persian paragraph alignment', await evaluate(`getComputedStyle(document.getElementById('fa')).textAlign`), 'right')
 expect('english paragraph dir', await evaluate(`document.getElementById('en').getAttribute('dir')`), null)

@@ -186,12 +186,55 @@ export async function inject(target, sources) {
     }
     await send('Runtime.evaluate', { expression: sources.css })
     await send('Runtime.evaluate', { expression: sources.js })
+    // Keep the channel so a caller can ask the page whether the patch really
+    // took effect (see probeFont) without opening a second CDP session.
+    socket.wbSend = send
     return socket
   } catch (err) {
     try {
       socket.close()
     } catch {}
     throw err
+  }
+}
+
+/**
+ * Ask an already-injected renderer whether the Persian font really arrived.
+ * Injection succeeding only means the CSS text was accepted — a font that
+ * fails to decode leaves the page looking exactly like an unpatched one, so
+ * the launcher checks instead of assuming.
+ */
+export const FONT_PROBE = `(async () => {
+  try {
+    await document.fonts.load('16px "WorkBuddy Vazir"');
+    await document.fonts.ready;
+    let faces = 0;
+    let loaded = 0;
+    document.fonts.forEach((face) => {
+      if (/Vazir|PingFang|Segoe UI/i.test(face.family)) {
+        faces++;
+        if (face.status === 'loaded') loaded++;
+      }
+    });
+    return { faces, loaded, vazir: document.fonts.check('16px "WorkBuddy Vazir"') };
+  } catch (err) {
+    return { faces: 0, loaded: 0, vazir: false, error: String(err) };
+  }
+})()`
+
+/** Run the font probe against a socket returned by inject(). */
+export async function probeFont(socket) {
+  const send = socket && socket.wbSend
+  if (!send) return null
+  try {
+    const res = await send('Runtime.evaluate', {
+      expression: FONT_PROBE,
+      awaitPromise: true,
+      returnByValue: true,
+    })
+    return res.result?.result?.value ?? null
+  } catch {
+    return null
   }
 }
 
