@@ -26,6 +26,7 @@ import { readEntry } from './asar.mjs'
 import { decide } from './decide.mjs'
 import {
   checkPatch,
+  connectTarget,
   cssSource,
   inject,
   isTarget,
@@ -163,6 +164,29 @@ function clearState() {
 
 // ------------------------------------------------------------------- main ---
 
+/**
+ * Bring the running app's window to the front.
+ *
+ * The shortcut is a normal thing to click while WorkBuddy is already open: it
+ * sits on the desktop next to the app's own icon. Doing nothing there reads as
+ * "the shortcut is broken", so an already-patched instance is raised instead.
+ * This opens its own short-lived CDP session — the launcher's session, and the
+ * script registrations attached to it, are untouched.
+ */
+async function raiseWindow(port) {
+  if (!port) return false
+  let raised = false
+  for (const target of (await listTargets(port)).filter(isTarget)) {
+    try {
+      const { socket, send } = await connectTarget(target)
+      await send('Page.bringToFront')
+      socket.close()
+      raised = true
+    } catch {}
+  }
+  return raised
+}
+
 function describe(install, exe, pids, patch, build) {
   const state = readState()
   const live = state && pids.includes(state.pid)
@@ -229,9 +253,12 @@ async function main() {
   const state = readState()
 
   switch (decide({ pids, state, installDir: install.dir, ensure, restart: has('--restart') })) {
-    case 'noop':
+    case 'noop': {
       log(`already running with the layer (pid ${state.pid}, build ${state.patch || '?'})`)
+      const raised = await raiseWindow(state.port)
+      log(raised ? 'brought the existing window to the front' : 'the existing window could not be raised')
       return
+    }
     case 'refuse':
       console.log(`WorkBuddy is already running (pid ${pids.join(', ')}).`)
       console.log('The RTL layer is only injected when the app is started by this launcher.')
@@ -295,7 +322,13 @@ async function main() {
       const socket = await inject(target, sources)
       sockets.set(target.id, socket)
       log(`injected: ${target.title || target.url}`)
-      const font = await probeFont(socket)
+      // The first probe can land while the document is still painting; a font
+      // that is merely not ready yet must not be reported as broken.
+      let font = await probeFont(socket)
+      if (font && font.loaded === 0) {
+        await delay(800)
+        font = (await probeFont(socket)) || font
+      }
       if (font && font.loaded > 0) fontOk = true
       if (font) log(`font: ${font.loaded}/${font.faces} faces loaded, vazir=${font.vazir}`)
       else log('font: could not be verified in this renderer')

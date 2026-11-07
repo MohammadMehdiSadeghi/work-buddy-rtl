@@ -71,8 +71,15 @@ show a live launcher for this install:
 | Running? | Launcher state file | Result |
 | --- | --- | --- |
 | no | — | start with the layer |
-| yes | live, same install dir | exit quietly (already patched) |
+| yes | live, same install dir | raise the existing window (`Page.bringToFront`) and exit |
 | yes | missing or stale | terminate by pid, start with the layer |
+
+Raising the window matters because the shortcut sits next to the app's own
+icon: clicking it while WorkBuddy is open is the common case, and a hidden
+launcher that exits silently there is indistinguishable from a broken shortcut.
+The raise opens its own short-lived CDP session, so the launcher's session — and
+the `addScriptToEvaluateOnNewDocument` registrations that survive reloads — are
+not disturbed.
 
 ## 3. Bootstrap payload
 

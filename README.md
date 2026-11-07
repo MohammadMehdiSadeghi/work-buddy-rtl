@@ -135,7 +135,7 @@ The shortcut uses `--ensure`, which means it is safe to click at any time:
 | Situation when you click it | What happens |
 | --- | --- |
 | WorkBuddy is closed | it starts with the layer |
-| WorkBuddy is open **with** the layer | nothing — the launcher exits quietly |
+| WorkBuddy is open **with** the layer | its window is brought to the front, nothing else |
 | WorkBuddy is open **without** the layer (started from its own icon) | that instance is closed and reopened with the layer |
 
 That third case is the one that used to be silent: opening WorkBuddy from its
@@ -364,7 +364,7 @@ cd work-buddy-rtl
 | وضعیت هنگام کلیک | نتیجه |
 | --- | --- |
 | WorkBuddy بسته است | با لایه باز می‌شود |
-| باز است و لایه **فعال** است | هیچ کاری نمی‌کند؛ لانچر بی‌صدا خارج می‌شود |
+| باز است و لایه **فعال** است | پنجره‌اش به جلو می‌آید، نه چیز دیگری |
 | باز است ولی لایه **فعال نیست** (از آیکون خودش باز شده) | همان نسخه بسته و با لایه دوباره باز می‌شود |
 
 حالت سوم همان جایی است که قبلاً بی‌صدا از دست می‌رفت: اگر WorkBuddy را از
