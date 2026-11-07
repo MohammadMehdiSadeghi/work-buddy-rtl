@@ -81,6 +81,21 @@ The raise opens its own short-lived CDP session, so the launcher's session — a
 the `addScriptToEvaluateOnNewDocument` registrations that survive reloads — are
 not disturbed.
 
+### The start lock
+
+`%TEMP%/workbuddy-rtl.lock` holds the pid of the launcher that is currently
+starting or replacing the app. Without it, clicking the shortcut twice within a
+second is destructive: the second launcher finds a process that has just been
+spawned but no state file yet, concludes the running copy has no layer, kills
+the app the first click had only just started, and starts it again. The window
+never lives long enough to be seen — reported as "I have to click it several
+times".
+
+A launcher that finds the lock held does not queue up work. It waits for the
+other launcher's state file, then raises that window and exits. A lock whose pid
+is no longer alive is ignored and taken over, so a crash cannot wedge the
+shortcut.
+
 ## 3. Bootstrap payload
 
 Each concern is its own self-contained IIFE, and neither uses `eval`:

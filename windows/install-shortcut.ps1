@@ -39,8 +39,10 @@ if ($install) {
 $powershell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
 # -Ensure: clicking the shortcut always leaves WorkBuddy running *with* the
 # layer. If WorkBuddy is already open without it, that instance is replaced;
-# if it is already patched, the launcher exits without touching anything.
-$arguments = "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"$Launcher`" -Windowless -Ensure"
+# if it is already patched, the launcher raises the window instead.
+# -NoProfile keeps the hidden run from loading the user's profile scripts, which
+# are a common source of slow starts and of output nobody ever sees.
+$arguments = "-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$Launcher`" -Windowless -Ensure"
 
 $shell = New-Object -ComObject WScript.Shell
 foreach ($target in $targets) {

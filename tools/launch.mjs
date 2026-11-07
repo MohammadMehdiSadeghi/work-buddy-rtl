@@ -162,6 +162,48 @@ function clearState() {
   } catch {}
 }
 
+// --------------------------------------------------------------- start lock ---
+
+const LOCK_FILE = path.join(os.tmpdir(), 'workbuddy-rtl.lock')
+
+function alive(pid) {
+  if (!pid) return false
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Only one launcher may be starting or replacing the app at a time.
+ *
+ * Clicking the shortcut twice is ordinary impatience, and without this the
+ * second launcher finds a process that has just been spawned but no state file
+ * yet, concludes the running copy has no layer, kills the app the first click
+ * had only just started, and starts it again. The window never survives long
+ * enough to be seen, which is exactly "I have to click it several times".
+ */
+function takeLock() {
+  let holder = null
+  try {
+    holder = JSON.parse(fs.readFileSync(LOCK_FILE, 'utf8'))
+  } catch {}
+  if (holder && alive(holder.pid)) return { ok: false, holder }
+  try {
+    fs.writeFileSync(LOCK_FILE, JSON.stringify({ pid: process.pid, at: Date.now() }))
+  } catch {}
+  return { ok: true, holder: { pid: process.pid } }
+}
+
+function releaseLock() {
+  try {
+    const holder = JSON.parse(fs.readFileSync(LOCK_FILE, 'utf8'))
+    if (holder.pid === process.pid) fs.unlinkSync(LOCK_FILE)
+  } catch {}
+}
+
 // ------------------------------------------------------------------- main ---
 
 /**
@@ -207,6 +249,7 @@ function describe(install, exe, pids, patch, build) {
 }
 
 async function main() {
+  const startedAt = Date.now()
   const rootArg = arg('--root')
   let install = rootArg ? { dir: path.resolve(rootArg), version: '' } : findInstalls()[0]
 
@@ -249,6 +292,30 @@ async function main() {
     process.exit(1)
   }
 
+  const lock = takeLock()
+  if (!lock.ok) {
+    // Someone else is already bringing the app up. Wait for their window
+    // instead of racing them into a start/kill loop.
+    log(`another launcher is already starting WorkBuddy (pid ${lock.holder.pid}); waiting for its window`)
+    const deadline = Date.now() + 40000
+    while (Date.now() < deadline) {
+      const started = readState()
+      if (started && pidsOf(exeName).includes(started.pid)) {
+        // Keep waiting until the window can actually be raised: it can exist as
+        // a target for a second or two before it is ready to come forward.
+        if (await raiseWindow(started.port)) {
+          log('brought the existing window to the front')
+          return
+        }
+      }
+      if (!alive(lock.holder.pid)) break
+      await delay(500)
+    }
+    // The other launcher died or gave up: take over rather than doing nothing.
+    log('the other launcher is gone; continuing')
+    takeLock()
+  }
+
   const pids = pidsOf(exeName)
   const state = readState()
 
@@ -257,12 +324,14 @@ async function main() {
       log(`already running with the layer (pid ${state.pid}, build ${state.patch || '?'})`)
       const raised = await raiseWindow(state.port)
       log(raised ? 'brought the existing window to the front' : 'the existing window could not be raised')
+      releaseLock()
       return
     }
     case 'refuse':
       console.log(`WorkBuddy is already running (pid ${pids.join(', ')}).`)
       console.log('The RTL layer is only injected when the app is started by this launcher.')
       console.log('Close WorkBuddy and run this again, or run it with --restart.')
+      releaseLock()
       return
     case 'replace':
       log('WorkBuddy is running without the layer; replacing that instance...')
@@ -273,6 +342,7 @@ async function main() {
     log('closing the running instance...')
     terminate(pids)
     if (!(await waitGone(exeName, 10000))) {
+      releaseLock()
       fail('could not close the running WorkBuddy instance')
       process.exit(1)
     }
@@ -282,7 +352,10 @@ async function main() {
   const sources = { css: cssSource(css), js }
   const port = Number(arg('--port')) || 19000 + Math.floor(Math.random() * 20000)
 
-  log(`starting ${exeName} (CDP port ${port})`)
+  // Timings go to the log so "it feels slow" can be answered with numbers
+  // instead of a guess about which step is the expensive one.
+  const t0 = Date.now()
+  log(`starting ${exeName} (CDP port ${port}, pre-flight ${t0 - startedAt} ms)`)
   const child = spawn(exe, [`--remote-debugging-port=${port}`, '--remote-debugging-address=127.0.0.1', ...appArgs], {
     cwd: install.dir,
     stdio: 'ignore',
@@ -290,6 +363,7 @@ async function main() {
   })
 
   if (!child.pid) {
+    releaseLock()
     fail('could not start WorkBuddy')
     process.exit(1)
   }
@@ -303,17 +377,20 @@ async function main() {
   const { targets, dead } = await waitForTargets(port, { timeout: 120000, isDead: () => exited })
   if (dead) {
     clearState()
+    releaseLock()
     fail('WorkBuddy exited before its window was ready (another instance may be open).')
     process.exit(1)
   }
   if (!targets.length) {
     clearState()
+    releaseLock()
     try {
       child.kill()
     } catch {}
     fail('timed out waiting for the WorkBuddy window')
     process.exit(1)
   }
+  log(`window ready (${Date.now() - t0} ms after spawn)`)
 
   const sockets = new Map()
   let fontOk = false
@@ -339,6 +416,7 @@ async function main() {
 
   if (!sockets.size) {
     clearState()
+    releaseLock()
     fail('the layer was not injected into any window')
     process.exit(1)
   }
@@ -349,7 +427,12 @@ async function main() {
     log('WARNING the Persian font did not report as loaded — text may fall back to a system font')
   }
 
-  log(`RTL layer active (build ${build}). Leave this process running; it stops with WorkBuddy.`)
+  // Startup is over; later clicks must be free to raise the window, not wait.
+  releaseLock()
+  log(
+    `RTL layer active (build ${build}, ready in ${Date.now() - startedAt} ms). ` +
+      'Leave this process running; it stops with WorkBuddy.'
+  )
 
   // Settings, conversations and every new window get their own renderer.
   const timer = setInterval(async () => {
@@ -372,6 +455,7 @@ async function main() {
     }
     sockets.clear()
     clearState()
+    releaseLock()
   }
 
   child.on('exit', () => {
@@ -389,6 +473,7 @@ async function main() {
 
 main().catch((err) => {
   clearState()
+  releaseLock()
   fail(err.message || err)
   process.exit(1)
 })
